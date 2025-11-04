@@ -40,9 +40,9 @@ jobs:
 
       - name: Run tests with coverage
         env:
-          PYTHONPATH: ${{ github.workspace }}/src
+          PYTHONPATH: ${{ github.workspace }}
         run: |
-          pytest tests/ -v --cov=src --cov-report=xml --cov-report=term-missing
+          python -m pytest tests/ -v --cov=src --cov-report=xml --cov-report=term-missing
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
@@ -77,14 +77,14 @@ jobs:
 
       - name: Run pylint
         env:
-          PYTHONPATH: ${{ github.workspace }}/src
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           pylint src/ --rcfile=.pylintrc || true  # Don't fail on warnings
           pylint src/ --rcfile=.pylintrc --fail-under=8.0 || exit 1
 
       - name: Run mypy type checking
         env:
-          PYTHONPATH: ${{ github.workspace }}/src
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           mypy src/ --config-file=mypy.ini || true  # Don't fail on type errors yet
 
