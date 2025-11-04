@@ -7,8 +7,10 @@ Represents a spatial planning solution (layout).
 Created: 2025-11-03
 """
 
-from typing import Dict, Tuple, Optional, List
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
+
 from .building import Building
 
 
@@ -125,12 +127,7 @@ class Solution:
             x, y = self.positions[building.id]
             margin = building.radius
 
-            if (
-                x - margin < x_min
-                or x + margin > x_max
-                or y - margin < y_min
-                or y + margin > y_max
-            ):
+            if x - margin < x_min or x + margin > x_max or y - margin < y_min or y + margin > y_max:
                 return False
 
         # Check overlaps

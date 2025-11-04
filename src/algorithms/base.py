@@ -9,6 +9,7 @@ Created: 2025-11-03
 
 from abc import ABC, abstractmethod
 from typing import Dict, List
+
 from .building import Building
 from .solution import Solution
 

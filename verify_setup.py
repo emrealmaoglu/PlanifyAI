@@ -3,10 +3,10 @@
 PlanifyAI Setup Verification Script
 Created: 2025-11-03
 """
-import sys
 import importlib.metadata
-from io import StringIO
 import json
+import sys
+from io import StringIO
 
 
 def check_numpy_accelerate():
@@ -120,4 +120,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

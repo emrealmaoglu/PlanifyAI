@@ -50,4 +50,3 @@ print(f"Fitness: {result['fitness']:.3f}")
 
 - [API Documentation (EN)](api/EN/)
 - [Quick Start Guide](guides/EN/quickstart.md)
-

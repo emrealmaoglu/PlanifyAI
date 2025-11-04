@@ -109,4 +109,3 @@ class RoadGenerator:
 ---
 
 **Status:** Ready for Day 2 implementation 🚀
-

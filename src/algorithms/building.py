@@ -12,8 +12,9 @@ Created: 2025-11-03
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Tuple, Dict
 from enum import Enum
+from typing import Dict, Optional, Tuple
+
 import numpy as np
 
 

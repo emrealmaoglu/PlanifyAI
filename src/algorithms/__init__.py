@@ -13,9 +13,9 @@ Classes:
 Week 1: Core data structures implemented
 """
 
+from .base import Optimizer
 from .building import Building, BuildingType, create_sample_campus
 from .solution import Solution
-from .base import Optimizer
 
 __all__ = ["Building", "BuildingType", "Solution", "Optimizer", "create_sample_campus"]
 

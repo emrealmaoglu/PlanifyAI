@@ -1,8 +1,10 @@
 """
 Unit tests for Optimizer abstract base class
 """
-import pytest
 from abc import ABC
+
+import pytest
+
 from src.algorithms.base import Optimizer
 from src.algorithms.building import Building, BuildingType
 from src.algorithms.solution import Solution

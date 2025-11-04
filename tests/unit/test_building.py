@@ -1,8 +1,9 @@
 """
 Unit tests for Building and BuildingType classes
 """
-import pytest
 import numpy as np
+import pytest
+
 from src.algorithms.building import Building, BuildingType, create_sample_campus
 
 
@@ -82,17 +83,13 @@ class TestBuildingProperties:
 
     def test_building_footprint_calculation(self):
         """Test footprint calculation"""
-        building = Building(
-            id="test_building", type=BuildingType.LIBRARY, area=6000.0, floors=3
-        )
+        building = Building(id="test_building", type=BuildingType.LIBRARY, area=6000.0, floors=3)
         expected_footprint = 6000.0 / 3
         assert building.footprint == pytest.approx(expected_footprint)
 
     def test_building_radius_calculation(self):
         """Test radius calculation"""
-        building = Building(
-            id="test_building", type=BuildingType.LIBRARY, area=5000.0, floors=3
-        )
+        building = Building(id="test_building", type=BuildingType.LIBRARY, area=5000.0, floors=3)
         footprint = building.footprint
         expected_radius = np.sqrt(footprint / np.pi)
         assert building.radius == pytest.approx(expected_radius)
@@ -100,9 +97,7 @@ class TestBuildingProperties:
     def test_building_importance_calculation(self):
         """Test importance calculation for different building types"""
         # Library should have higher importance weight (2.2)
-        library = Building(
-            id="library", type=BuildingType.LIBRARY, area=5000.0, floors=3
-        )
+        library = Building(id="library", type=BuildingType.LIBRARY, area=5000.0, floors=3)
         library_importance = library.importance
 
         # Residential should have lower importance weight (1.0)
@@ -119,9 +114,7 @@ class TestBuildingProperties:
     def test_building_importance_all_types(self):
         """Test importance weights for all building types"""
         # Health should have highest weight (2.5)
-        health = Building(
-            id="health", type=BuildingType.HEALTH, area=1000.0, floors=1
-        )
+        health = Building(id="health", type=BuildingType.HEALTH, area=1000.0, floors=1)
         assert health.importance == pytest.approx(2.5 * np.sqrt(1000.0))
 
         # Residential should have lowest weight (1.0)
@@ -156,9 +149,7 @@ class TestBuildingDistance:
 
     def test_building_distance_no_position(self):
         """Test distance calculation when position not set"""
-        building1 = Building(
-            id="b1", type=BuildingType.LIBRARY, area=5000.0, floors=3
-        )
+        building1 = Building(id="b1", type=BuildingType.LIBRARY, area=5000.0, floors=3)
         building2 = Building(
             id="b2",
             type=BuildingType.EDUCATIONAL,
@@ -215,9 +206,7 @@ class TestBuildingOverlap:
 
     def test_building_overlap_no_position(self):
         """Test overlap when position not set"""
-        building1 = Building(
-            id="b1", type=BuildingType.LIBRARY, area=5000.0, floors=3
-        )
+        building1 = Building(id="b1", type=BuildingType.LIBRARY, area=5000.0, floors=3)
         building2 = Building(
             id="b2",
             type=BuildingType.EDUCATIONAL,
@@ -253,29 +242,19 @@ class TestBuildingEquality:
 
     def test_building_equality(self):
         """Test building equality based on ID"""
-        building1 = Building(
-            id="same_id", type=BuildingType.LIBRARY, area=5000.0, floors=3
-        )
-        building2 = Building(
-            id="same_id", type=BuildingType.EDUCATIONAL, area=6000.0, floors=4
-        )
+        building1 = Building(id="same_id", type=BuildingType.LIBRARY, area=5000.0, floors=3)
+        building2 = Building(id="same_id", type=BuildingType.EDUCATIONAL, area=6000.0, floors=4)
         assert building1 == building2
 
     def test_building_inequality(self):
         """Test building inequality"""
-        building1 = Building(
-            id="id1", type=BuildingType.LIBRARY, area=5000.0, floors=3
-        )
-        building2 = Building(
-            id="id2", type=BuildingType.LIBRARY, area=5000.0, floors=3
-        )
+        building1 = Building(id="id1", type=BuildingType.LIBRARY, area=5000.0, floors=3)
+        building2 = Building(id="id2", type=BuildingType.LIBRARY, area=5000.0, floors=3)
         assert building1 != building2
 
     def test_building_hash(self):
         """Test building hashing"""
-        building = Building(
-            id="test_id", type=BuildingType.LIBRARY, area=5000.0, floors=3
-        )
+        building = Building(id="test_id", type=BuildingType.LIBRARY, area=5000.0, floors=3)
         # Should be hashable
         assert hash(building) == hash("test_id")
 

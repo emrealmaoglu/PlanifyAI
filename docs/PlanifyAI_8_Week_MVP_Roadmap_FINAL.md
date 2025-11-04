@@ -585,7 +585,7 @@ class Building:
     area: float  # m²
     floors: int
     position: Tuple[float, float] = None  # (x, y) in meters
-    
+
     @property
     def footprint(self) -> float:
         """Ground floor footprint"""
@@ -596,7 +596,7 @@ class Constraint:
     def __init__(self, constraint_type: str, params: Dict):
         self.type = constraint_type
         self.params = params
-    
+
     def check(self, solution: List[Building]) -> bool:
         """Check if solution satisfies constraint"""
         if self.type == "min_distance":
@@ -626,7 +626,7 @@ class HSAGA:
     Stage 1: SA for global exploration (200 iterations)
     Stage 2: GA for local refinement (100 generations)
     """
-    
+
     def __init__(self,
                  buildings: List[Building],
                  site_bounds: Tuple[float, float, float, float],
@@ -636,83 +636,83 @@ class HSAGA:
         self.bounds = site_bounds  # (xmin, ymin, xmax, ymax)
         self.constraints = constraints
         self.objectives = objectives
-        
+
         # SA parameters (Li et al.)
         self.sa_temp_init = 300
         self.sa_cooling_rate = 0.95
         self.sa_iterations = 200
-        
+
         # GA parameters
         self.ga_pop_size = 100
         self.ga_generations = 100
         self.ga_crossover_rate = 0.8
         self.ga_mutation_rate = 0.15  # High for diversity
-        
+
         self.history = {
             'sa_fitness': [],
             'ga_fitness': [],
             'best_solution': None,
             'runtime': 0
         }
-    
+
     def optimize(self) -> Dict:
         """Main optimization pipeline"""
         import time
         start_time = time.time()
-        
+
         print("🔥 Stage 1: Simulated Annealing (global exploration)")
         sa_solutions = self._simulated_annealing()
-        
+
         print("🧬 Stage 2: Genetic Algorithm (local refinement)")
         refined_solutions = self._genetic_algorithm(sa_solutions)
-        
+
         # Select best solution
         best = min(refined_solutions, key=lambda s: s['fitness'])
         self.history['best_solution'] = best
         self.history['runtime'] = time.time() - start_time
-        
+
         print(f"✅ Optimization complete in {self.history['runtime']:.1f}s")
         return best
-    
+
     def _simulated_annealing(self) -> List[Dict]:
         """SA for global exploration - multiple parallel chains"""
         solutions = []
-        
+
         for chain in range(10):  # 10 parallel SA chains
             # Random initial solution
             current = self._random_solution()
             current_fitness = self._evaluate(current)
             best = current.copy()
             best_fitness = current_fitness
-            
+
             temp = self.sa_temp_init
-            
+
             for iteration in range(self.sa_iterations):
                 # Generate neighbor (perturbation)
                 neighbor = self._perturbation(current)
                 neighbor_fitness = self._evaluate(neighbor)
-                
+
                 # Acceptance criterion
                 delta = neighbor_fitness - current_fitness
                 if delta < 0 or np.random.rand() < np.exp(-delta / temp):
                     current = neighbor
                     current_fitness = neighbor_fitness
-                    
+
                     if current_fitness < best_fitness:
                         best = current.copy()
                         best_fitness = current_fitness
-                
+
                 # Cool down
                 temp *= self.sa_cooling_rate
-            
+
             solutions.append({
                 'solution': best,
                 'fitness': best_fitness
             })
             self.history['sa_fitness'].append(best_fitness)
-        
+
         return solutions
-    
+
     def _genetic_algorithm(self, initial_population: List[Dict]) -> List[Dict]:
         """GA for local refinement"""
         # Initialize population with SA solutions + random individuals
@@ -722,47 +722,47 @@ class HSAGA:
                 'solution': self._random_solution(),
                 'fitness': None
             })
-        
+
         # Evaluate initial population
         for ind in population:
             if ind['fitness'] is None:
                 ind['fitness'] = self._evaluate(ind['solution'])
-        
+
         for generation in range(self.ga_generations):
             # Selection (tournament)
             parents = self._tournament_selection(population, k=3)
-            
+
             # Crossover
             offspring = []
             for i in range(0, len(parents), 2):
                 if i+1 < len(parents):
                     child1, child2 = self._crossover(
-                        parents[i]['solution'], 
+                        parents[i]['solution'],
                         parents[i+1]['solution']
                     )
                     offspring.append({'solution': child1, 'fitness': None})
                     offspring.append({'solution': child2, 'fitness': None})
-            
+
             # Mutation
             for ind in offspring:
                 if np.random.rand() < self.ga_mutation_rate:
                     ind['solution'] = self._mutate(ind['solution'])
-            
+
             # Evaluate offspring
             for ind in offspring:
                 ind['fitness'] = self._evaluate(ind['solution'])
-            
+
             # Elitism + diversity injection (Li et al.)
             population.sort(key=lambda x: x['fitness'])
             elite = population[:10]  # Top 10%
             diverse = self._diversity_injection(offspring, n=10)
             population = elite + diverse + offspring[:self.ga_pop_size-20]
-            
+
             best_fitness = population[0]['fitness']
             self.history['ga_fitness'].append(best_fitness)
-        
+
         return population
-    
+
     def _random_solution(self) -> List[Building]:
         """Generate random valid solution"""
         solution = []
@@ -778,7 +778,7 @@ class HSAGA:
                 )
             )
             solution.append(b_copy)
-        
+
         # Repair if violates constraints
         max_attempts = 100
         for _ in range(max_attempts):
@@ -790,9 +790,9 @@ class HSAGA:
                     np.random.uniform(self.bounds[0], self.bounds[2]),
                     np.random.uniform(self.bounds[1], self.bounds[3])
                 )
-        
+
         return solution
-    
+
     def _evaluate(self, solution: List[Building]) -> float:
         """Evaluate fitness (lower is better)"""
         # Weighted sum of objectives
@@ -800,28 +800,28 @@ class HSAGA:
         for obj_func in self.objectives:
             total_fitness += obj_func(solution)
         return total_fitness
-    
+
     def _perturbation(self, solution: List[Building]) -> List[Building]:
         """Small random perturbation for SA"""
-        new_solution = [Building(b.id, b.type, b.area, b.floors, b.position) 
+        new_solution = [Building(b.id, b.type, b.area, b.floors, b.position)
                        for b in solution]
-        
+
         # Perturb one random building
         idx = np.random.randint(len(new_solution))
         b = new_solution[idx]
-        
+
         # Small random move
         delta = 20  # meters
         new_x = b.position[0] + np.random.uniform(-delta, delta)
         new_y = b.position[1] + np.random.uniform(-delta, delta)
-        
+
         # Clip to bounds
         new_x = np.clip(new_x, self.bounds[0], self.bounds[2])
         new_y = np.clip(new_y, self.bounds[1], self.bounds[3])
-        
+
         b.position = (new_x, new_y)
         return new_solution
-    
+
     def _tournament_selection(self, population: List[Dict], k: int) -> List[Dict]:
         """Tournament selection"""
         selected = []
@@ -830,49 +830,49 @@ class HSAGA:
             winner = min(tournament, key=lambda x: x['fitness'])
             selected.append(winner)
         return selected
-    
+
     def _crossover(self, parent1: List[Building], parent2: List[Building]) -> Tuple:
         """Single-point crossover"""
         n = len(parent1)
         point = np.random.randint(1, n)
-        
-        child1 = ([Building(b.id, b.type, b.area, b.floors, b.position) 
+
+        child1 = ([Building(b.id, b.type, b.area, b.floors, b.position)
                   for b in parent1[:point]] +
-                 [Building(b.id, b.type, b.area, b.floors, b.position) 
+                 [Building(b.id, b.type, b.area, b.floors, b.position)
                   for b in parent2[point:]])
-        
-        child2 = ([Building(b.id, b.type, b.area, b.floors, b.position) 
+
+        child2 = ([Building(b.id, b.type, b.area, b.floors, b.position)
                   for b in parent2[:point]] +
-                 [Building(b.id, b.type, b.area, b.floors, b.position) 
+                 [Building(b.id, b.type, b.area, b.floors, b.position)
                   for b in parent1[point:]])
-        
+
         return child1, child2
-    
+
     def _mutate(self, solution: List[Building]) -> List[Building]:
         """Random mutation"""
-        new_solution = [Building(b.id, b.type, b.area, b.floors, b.position) 
+        new_solution = [Building(b.id, b.type, b.area, b.floors, b.position)
                        for b in solution]
-        
+
         # Mutate 1-3 random buildings
         n_mutate = np.random.randint(1, 4)
         indices = np.random.choice(len(new_solution), size=n_mutate, replace=False)
-        
+
         for idx in indices:
             b = new_solution[idx]
             b.position = (
                 np.random.uniform(self.bounds[0], self.bounds[2]),
                 np.random.uniform(self.bounds[1], self.bounds[3])
             )
-        
+
         return new_solution
-    
+
     def _diversity_injection(self, population: List[Dict], n: int) -> List[Dict]:
         """Inject diverse solutions (Li et al.)"""
         # Select n most diverse solutions based on position variance
-        positions = [np.array([b.position for b in ind['solution']]) 
+        positions = [np.array([b.position for b in ind['solution']])
                     for ind in population]
         variances = [np.var(pos) for pos in positions]
-        
+
         # Get indices of top n variance
         diverse_indices = np.argsort(variances)[-n:]
         return [population[i] for i in diverse_indices]
@@ -904,9 +904,9 @@ def minimize_cost(solution: List[Building]) -> float:
         BuildingType.HEALTH: 2500,
         BuildingType.SOCIAL: 1600,
     }
-    
+
     total_cost = sum(b.area * cost_per_sqm[b.type] for b in solution)
-    
+
     # Normalize to [0, 1] range for fair weighting
     max_cost = 100_000_000  # 100M TL reference
     return total_cost / max_cost
@@ -918,13 +918,13 @@ def minimize_walking_distance(solution: List[Building]) -> float:
     """
     residential = [b for b in solution if b.type == BuildingType.RESIDENTIAL]
     educational = [b for b in solution if b.type == BuildingType.EDUCATIONAL]
-    
+
     if not residential or not educational:
         return 0.0
-    
+
     total_distance = 0.0
     count = 0
-    
+
     for res in residential:
         for edu in educational:
             dist = np.linalg.norm(
@@ -932,9 +932,9 @@ def minimize_walking_distance(solution: List[Building]) -> float:
             )
             total_distance += dist
             count += 1
-    
+
     avg_distance = total_distance / count if count > 0 else 0
-    
+
     # Normalize: ideal distance ~200m, max acceptable ~800m
     normalized = (avg_distance - 200) / 600
     return np.clip(normalized, 0, 1)
@@ -953,29 +953,29 @@ def maximize_adjacency_satisfaction(solution: List[Building]) -> float:
         (BuildingType.EDUCATIONAL, BuildingType.SOCIAL): 2,
         (BuildingType.HEALTH, BuildingType.HEALTH): -5,  # Separate clinics
     }
-    
+
     total_satisfaction = 0.0
     max_satisfaction = 0.0
-    
+
     for i, b1 in enumerate(solution):
         for b2 in solution[i+1:]:
             key = tuple(sorted([b1.type, b2.type]))
             weight = adjacency.get(key, 0)
-            
+
             if weight != 0:
                 dist = np.linalg.norm(
                     np.array(b1.position) - np.array(b2.position)
                 )
-                
+
                 # High adjacency want close, negative want far
                 if weight > 0:
                     satisfaction = weight / (1 + dist / 100)  # Closer is better
                 else:
                     satisfaction = abs(weight) * (dist / 100)  # Farther is better
-                
+
                 total_satisfaction += satisfaction
                 max_satisfaction += abs(weight)
-    
+
     # Return dissatisfaction (to minimize)
     return 1 - (total_satisfaction / max_satisfaction if max_satisfaction > 0 else 0)
 ```
@@ -995,14 +995,14 @@ from src.algorithms.hsaga import (
     Building, BuildingType, Constraint, HSAGA
 )
 from src.algorithms.objectives import (
-    minimize_cost, 
+    minimize_cost,
     minimize_walking_distance,
     maximize_adjacency_satisfaction
 )
 
 class TestBuilding:
     """Test Building dataclass"""
-    
+
     def test_building_creation(self):
         b = Building(
             id="B1",
@@ -1012,60 +1012,60 @@ class TestBuilding:
             position=(100, 100)
         )
         assert b.footprint == 1250  # 5000 / 4
-    
+
     def test_building_without_position(self):
         b = Building("B2", BuildingType.EDUCATIONAL, 3000, 3)
         assert b.position is None
 
 class TestConstraints:
     """Test constraint checking"""
-    
+
     def test_min_distance_constraint(self):
         c = Constraint("min_distance", {"threshold": 50})
-        
+
         buildings = [
             Building("B1", BuildingType.RESIDENTIAL, 1000, 2, (0, 0)),
             Building("B2", BuildingType.EDUCATIONAL, 1000, 2, (100, 0)),
         ]
-        
+
         assert c.check(buildings) == True  # 100m apart > 50m
-        
+
         buildings[1].position = (30, 0)  # Move closer
         assert c.check(buildings) == False  # 30m < 50m
-    
+
     def test_site_boundary_constraint(self):
         c = Constraint("site_boundary", {"bounds": (0, 0, 1000, 1000)})
-        
+
         buildings = [
             Building("B1", BuildingType.RESIDENTIAL, 1000, 2, (500, 500)),
         ]
         assert c.check(buildings) == True
-        
+
         buildings[0].position = (1100, 500)  # Outside boundary
         assert c.check(buildings) == False
 
 class TestObjectives:
     """Test objective functions"""
-    
+
     def test_cost_objective(self):
         solution = [
             Building("B1", BuildingType.RESIDENTIAL, 5000, 2, (0, 0)),
             Building("B2", BuildingType.EDUCATIONAL, 3000, 2, (100, 0)),
         ]
-        
+
         cost = minimize_cost(solution)
         assert 0 <= cost <= 1  # Normalized
         assert cost > 0  # Non-zero
-    
+
     def test_walking_distance(self):
         solution = [
             Building("R1", BuildingType.RESIDENTIAL, 1000, 2, (0, 0)),
             Building("E1", BuildingType.EDUCATIONAL, 1000, 2, (200, 0)),
         ]
-        
+
         distance = minimize_walking_distance(solution)
         assert 0 <= distance <= 1
-        
+
         # Test edge case: no residential buildings
         solution_no_res = [
             Building("E1", BuildingType.EDUCATIONAL, 1000, 2, (0, 0)),
@@ -1074,59 +1074,59 @@ class TestObjectives:
 
 class TestHSAGA:
     """Integration tests for H-SAGA"""
-    
+
     @pytest.fixture
     def simple_problem(self):
         """Simple 5-building problem"""
         buildings = [
-            Building(f"B{i}", 
+            Building(f"B{i}",
                     np.random.choice(list(BuildingType)),
                     np.random.randint(1000, 5000),
                     np.random.randint(2, 5))
             for i in range(5)
         ]
-        
+
         constraints = [
             Constraint("min_distance", {"threshold": 30}),
             Constraint("site_boundary", {"bounds": (0, 0, 500, 500)}),
         ]
-        
+
         objectives = [
             minimize_cost,
             minimize_walking_distance,
             maximize_adjacency_satisfaction,
         ]
-        
+
         return buildings, constraints, objectives
-    
+
     def test_random_solution_generation(self, simple_problem):
         buildings, constraints, objectives = simple_problem
         optimizer = HSAGA(buildings, (0, 0, 500, 500), constraints, objectives)
-        
+
         solution = optimizer._random_solution()
-        
+
         assert len(solution) == len(buildings)
         for b in solution:
             assert b.position is not None
             assert 0 <= b.position[0] <= 500
             assert 0 <= b.position[1] <= 500
-    
+
     def test_full_optimization_run(self, simple_problem):
         """End-to-end test (may take ~30 seconds)"""
         buildings, constraints, objectives = simple_problem
-        
+
         # Reduce iterations for faster testing
         optimizer = HSAGA(buildings, (0, 0, 500, 500), constraints, objectives)
         optimizer.sa_iterations = 20  # Reduced from 200
         optimizer.ga_generations = 10  # Reduced from 100
-        
+
         result = optimizer.optimize()
-        
+
         assert result is not None
         assert 'solution' in result
         assert 'fitness' in result
         assert optimizer.history['runtime'] > 0
-        
+
         # Check solution validity
         solution = result['solution']
         assert all(c.check(solution) for c in constraints)
@@ -1211,7 +1211,7 @@ class TensorFieldGenerator:
     - Educational: Grid-aligned
     - Commercial: Radial + high connectivity
     """
-    
+
     def __init__(self, grid_size: int = 200, cell_size: float = 5.0):
         """
         Args:
@@ -1221,7 +1221,7 @@ class TensorFieldGenerator:
         self.grid_size = grid_size
         self.cell_size = cell_size
         self.tensor_field = None
-        
+
         # Field parameters per building type
         self.type_params = {
             BuildingType.RESIDENTIAL: {
@@ -1250,7 +1250,7 @@ class TensorFieldGenerator:
                 'strength': 0.7
             },
         }
-    
+
     def generate(self, buildings: List[Building]) -> np.ndarray:
         """
         Generate 2x2 symmetric tensor field
@@ -1260,97 +1260,97 @@ class TensorFieldGenerator:
         Txx = np.zeros((self.grid_size, self.grid_size))
         Tyy = np.zeros((self.grid_size, self.grid_size))
         Txy = np.zeros((self.grid_size, self.grid_size))
-        
+
         # Accumulate contributions from each building
         for building in buildings:
             if building.position is None:
                 continue
-            
+
             params = self.type_params[building.type]
-            
+
             if params['pattern'] == 'radial':
                 contrib = self._radial_field(building, params)
             elif params['pattern'] == 'grid':
                 contrib = self._grid_field(building, params)
             else:
                 raise ValueError(f"Unknown pattern: {params['pattern']}")
-            
+
             # Accumulate (weighted sum)
             Txx += contrib['Txx']
             Tyy += contrib['Tyy']
             Txy += contrib['Txy']
-        
+
         # Smooth the field (reduce noise)
         Txx = gaussian_filter(Txx, sigma=2.0)
         Tyy = gaussian_filter(Tyy, sigma=2.0)
         Txy = gaussian_filter(Txy, sigma=2.0)
-        
+
         # Construct 2x2 tensor at each grid point
         tensor_field = np.zeros((self.grid_size, self.grid_size, 2, 2))
         tensor_field[:, :, 0, 0] = Txx
         tensor_field[:, :, 1, 1] = Tyy
         tensor_field[:, :, 0, 1] = Txy
         tensor_field[:, :, 1, 0] = Txy  # Symmetric
-        
+
         self.tensor_field = tensor_field
         return tensor_field
-    
+
     def _radial_field(self, building: Building, params: Dict) -> Dict:
         """Generate radial tensor field around a point"""
         Txx = np.zeros((self.grid_size, self.grid_size))
         Tyy = np.zeros((self.grid_size, self.grid_size))
         Txy = np.zeros((self.grid_size, self.grid_size))
-        
+
         # Building position in grid coordinates
         bx_grid = int(building.position[0] / self.cell_size)
         by_grid = int(building.position[1] / self.cell_size)
-        
+
         radius_cells = int(params['influence_radius'] / self.cell_size)
         strength = params['strength']
-        
+
         # Create meshgrid
         y_idx, x_idx = np.ogrid[:self.grid_size, :self.grid_size]
-        
+
         # Distance from building
         dx = (x_idx - bx_grid) * self.cell_size
         dy = (y_idx - by_grid) * self.cell_size
         distance = np.sqrt(dx**2 + dy**2)
-        
+
         # Decay function
         influence = np.exp(-distance / params['influence_radius'])
         influence *= strength
-        
+
         # Radial tensor: aligned with direction from building
         angle = np.arctan2(dy, dx)
         Txx = influence * np.cos(angle)**2
         Tyy = influence * np.sin(angle)**2
         Txy = influence * np.sin(angle) * np.cos(angle)
-        
+
         return {'Txx': Txx, 'Tyy': Tyy, 'Txy': Txy}
-    
+
     def _grid_field(self, building: Building, params: Dict) -> Dict:
         """Generate grid-aligned tensor field"""
         Txx = np.ones((self.grid_size, self.grid_size))
         Tyy = np.ones((self.grid_size, self.grid_size))
         Txy = np.zeros((self.grid_size, self.grid_size))
-        
+
         # Apply influence decay
         bx_grid = int(building.position[0] / self.cell_size)
         by_grid = int(building.position[1] / self.cell_size)
-        
+
         y_idx, x_idx = np.ogrid[:self.grid_size, :self.grid_size]
         dx = (x_idx - bx_grid) * self.cell_size
         dy = (y_idx - by_grid) * self.cell_size
         distance = np.sqrt(dx**2 + dy**2)
-        
+
         influence = np.exp(-distance / params['influence_radius'])
         influence *= params['strength']
-        
+
         Txx *= influence
         Tyy *= influence
-        
+
         return {'Txx': Txx, 'Tyy': Tyy, 'Txy': Txy}
-    
+
     def compute_eigenvectors(self) -> Tuple[np.ndarray, np.ndarray]:
         """
         Compute major eigenvector field (road direction)
@@ -1358,25 +1358,25 @@ class TensorFieldGenerator:
         """
         if self.tensor_field is None:
             raise ValueError("Must call generate() first")
-        
+
         # Eigendecomposition at each grid point
         eigenvalues = np.zeros((self.grid_size, self.grid_size, 2))
         eigenvectors = np.zeros((self.grid_size, self.grid_size, 2, 2))
-        
+
         for i in range(self.grid_size):
             for j in range(self.grid_size):
                 tensor = self.tensor_field[i, j]
                 evals, evecs = np.linalg.eigh(tensor)
-                
+
                 # Sort by magnitude (major eigenvector)
                 idx = np.argsort(np.abs(evals))[::-1]
                 eigenvalues[i, j] = evals[idx]
                 eigenvectors[i, j] = evecs[:, idx]
-        
+
         # Extract major eigenvector field
         evec_x = eigenvectors[:, :, 0, 0]
         evec_y = eigenvectors[:, :, 1, 0]
-        
+
         return evec_x, evec_y
 ```
 
@@ -1397,8 +1397,8 @@ class StreamlineIntegrator:
     Generate road network by tracing streamlines in tensor field
     Uses adaptive step size for smooth curves
     """
-    
-    def __init__(self, 
+
+    def __init__(self,
                  tensor_generator: TensorFieldGenerator,
                  step_size_init: float = 5.0,
                  min_step: float = 1.0,
@@ -1407,22 +1407,22 @@ class StreamlineIntegrator:
         self.step_size_init = step_size_init
         self.min_step = min_step
         self.max_step = max_step
-        
+
         # Get eigenvector field
         self.evec_x, self.evec_y = tensor_generator.compute_eigenvectors()
-    
-    def trace_streamline(self, 
+
+    def trace_streamline(self,
                         start_point: Tuple[float, float],
                         max_length: float = 500,
                         direction: int = 1) -> List[Tuple[float, float]]:
         """
         Trace a single streamline using adaptive RK4
-        
+
         Args:
             start_point: (x, y) in meters
             max_length: Maximum road length
             direction: 1 for forward, -1 for backward
-        
+
         Returns:
             List of (x, y) points forming the road
         """
@@ -1430,40 +1430,40 @@ class StreamlineIntegrator:
         current_point = np.array(start_point, dtype=float)
         step_size = self.step_size_init
         total_length = 0
-        
+
         while total_length < max_length:
             # RK4 integration step
             new_point, error = self._rk4_step(current_point, step_size, direction)
-            
+
             # Adaptive step size control
             if error < 0.1:  # Low error - increase step
                 step_size = min(step_size * 1.5, self.max_step)
             elif error > 0.5:  # High error - decrease step
                 step_size = max(step_size * 0.5, self.min_step)
                 continue  # Retry with smaller step
-            
+
             # Check bounds
             if not self._in_bounds(new_point):
                 break
-            
+
             # Add point
             points.append(tuple(new_point))
-            
+
             # Update
             segment_length = np.linalg.norm(new_point - current_point)
             total_length += segment_length
             current_point = new_point
-            
+
             # Stop if curvature too high (sharp turn)
             if len(points) >= 3:
                 curvature = self._compute_curvature(points[-3:])
                 if curvature > 0.1:  # Max curvature threshold
                     break
-        
+
         return points
-    
-    def _rk4_step(self, 
-                  point: np.ndarray, 
+
+    def _rk4_step(self,
+                  point: np.ndarray,
                   h: float,
                   direction: int) -> Tuple[np.ndarray, float]:
         """
@@ -1472,107 +1472,107 @@ class StreamlineIntegrator:
         """
         # Get eigenvector at current point
         v1 = direction * self._get_eigenvector_at(point)
-        
+
         # RK4 intermediate points
         k1 = v1
         k2 = direction * self._get_eigenvector_at(point + 0.5 * h * k1)
         k3 = direction * self._get_eigenvector_at(point + 0.5 * h * k2)
         k4 = direction * self._get_eigenvector_at(point + h * k3)
-        
+
         # Weighted average
         new_point = point + (h / 6) * (k1 + 2*k2 + 2*k3 + k4)
-        
+
         # Error estimate (difference between 4th and 2nd order)
         new_point_euler = point + h * v1  # 1st order
         error = np.linalg.norm(new_point - new_point_euler)
-        
+
         return new_point, error
-    
+
     def _get_eigenvector_at(self, point: np.ndarray) -> np.ndarray:
         """Get normalized eigenvector at point (bilinear interpolation)"""
         # Convert to grid coordinates
         i = point[0] / self.tensor_gen.cell_size
         j = point[1] / self.tensor_gen.cell_size
-        
+
         # Bilinear interpolation
         i0, j0 = int(np.floor(i)), int(np.floor(j))
         i1, j1 = i0 + 1, j0 + 1
-        
+
         # Clip to grid bounds
         i0 = np.clip(i0, 0, self.tensor_gen.grid_size - 1)
         i1 = np.clip(i1, 0, self.tensor_gen.grid_size - 1)
         j0 = np.clip(j0, 0, self.tensor_gen.grid_size - 1)
         j1 = np.clip(j1, 0, self.tensor_gen.grid_size - 1)
-        
+
         # Weights
         wx = i - i0
         wy = j - j0
-        
+
         # Interpolate eigenvector components
         vx = ((1-wx) * (1-wy) * self.evec_x[j0, i0] +
               wx * (1-wy) * self.evec_x[j0, i1] +
               (1-wx) * wy * self.evec_x[j1, i0] +
               wx * wy * self.evec_x[j1, i1])
-        
+
         vy = ((1-wx) * (1-wy) * self.evec_y[j0, i0] +
               wx * (1-wy) * self.evec_y[j0, i1] +
               (1-wx) * wy * self.evec_y[j1, i0] +
               wx * wy * self.evec_y[j1, i1])
-        
+
         # Normalize
         vec = np.array([vx, vy])
         norm = np.linalg.norm(vec)
         if norm > 1e-6:
             vec /= norm
-        
+
         return vec
-    
+
     def _in_bounds(self, point: np.ndarray) -> bool:
         """Check if point is within grid"""
         x, y = point
         max_coord = self.tensor_gen.grid_size * self.tensor_gen.cell_size
         return (0 <= x < max_coord) and (0 <= y < max_coord)
-    
+
     def _compute_curvature(self, points: List[Tuple]) -> float:
         """Compute curvature from 3 consecutive points"""
         if len(points) < 3:
             return 0
-        
+
         p1, p2, p3 = [np.array(p) for p in points[-3:]]
-        
+
         # Vectors
         v1 = p2 - p1
         v2 = p3 - p2
-        
+
         # Angle between vectors
         cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-6)
         angle = np.arccos(np.clip(cos_angle, -1, 1))
-        
+
         # Curvature = angle / distance
         distance = np.linalg.norm(v1) + np.linalg.norm(v2)
         curvature = angle / (distance + 1e-6)
-        
+
         return curvature
-    
-    def generate_road_network(self, 
+
+    def generate_road_network(self,
                              seed_points: List[Tuple[float, float]],
                              bidirectional: bool = True) -> List[List[Tuple]]:
         """
         Generate full road network from multiple seed points
-        
+
         Args:
             seed_points: Starting points for streamlines
             bidirectional: Trace both forward and backward
-        
+
         Returns:
             List of roads (each road is a list of points)
         """
         roads = []
-        
+
         for seed in seed_points:
             # Forward direction
             road_forward = self.trace_streamline(seed, direction=1)
-            
+
             if bidirectional:
                 # Backward direction
                 road_backward = self.trace_streamline(seed, direction=-1)
@@ -1580,9 +1580,9 @@ class StreamlineIntegrator:
                 road = road_backward[::-1] + road_forward[1:]
             else:
                 road = road_forward
-            
+
             roads.append(road)
-        
+
         return roads
 ```
 
@@ -1611,48 +1611,48 @@ def test_end_to_end_campus_planning():
         Building("Admin", BuildingType.ADMINISTRATIVE, 1500, 2),
         Building("Health", BuildingType.HEALTH, 1000, 2),
     ]
-    
+
     constraints = [
         Constraint("min_distance", {"threshold": 40}),
         Constraint("site_boundary", {"bounds": (0, 0, 500, 500)}),
     ]
-    
+
     objectives = [minimize_cost]  # Simple single-objective for testing
-    
+
     # 2. Optimize building placement
     optimizer = HSAGA(buildings, (0, 0, 500, 500), constraints, objectives)
     optimizer.sa_iterations = 50  # Reduced for testing
     optimizer.ga_generations = 20
-    
+
     result = optimizer.optimize()
     solution = result['solution']
-    
+
     print(f"✅ Optimization completed: {len(solution)} buildings placed")
-    
+
     # 3. Generate tensor field
     tensor_gen = TensorFieldGenerator(grid_size=100, cell_size=5.0)
     tensor_field = tensor_gen.generate(solution)
-    
+
     assert tensor_field.shape == (100, 100, 2, 2)
     print("✅ Tensor field generated")
-    
+
     # 4. Generate road network
     integrator = StreamlineIntegrator(tensor_gen)
-    
+
     # Seed points: center and near each building type
     seed_points = [
         (250, 250),  # Center
         (100, 100),  # Corner
         (400, 400),  # Opposite corner
     ]
-    
+
     roads = integrator.generate_road_network(seed_points, bidirectional=True)
-    
+
     assert len(roads) > 0
     for road in roads:
         assert len(road) > 5  # At least some points
         print(f"  Road with {len(road)} points")
-    
+
     print("✅ Road network generated")
     print(f"🎉 Full pipeline test passed!")
 
@@ -1704,26 +1704,26 @@ class CampusPlanningProblem(Problem):
     """
     Pymoo problem wrapper for campus planning
     """
-    
+
     def __init__(self,
                  buildings: List[Building],
                  site_bounds: Tuple,
                  objectives: List[Callable],
                  constraints: List):
-        
+
         self.buildings = buildings
         self.bounds = site_bounds
         self.obj_functions = objectives
         self.const_functions = constraints
-        
+
         n_buildings = len(buildings)
         n_vars = 2 * n_buildings  # (x, y) for each building
         n_obj = len(objectives)
-        
+
         # Define bounds for each variable
         xl = np.array([site_bounds[0], site_bounds[1]] * n_buildings)
         xu = np.array([site_bounds[2], site_bounds[3]] * n_buildings)
-        
+
         super().__init__(
             n_var=n_vars,
             n_obj=n_obj,
@@ -1731,7 +1731,7 @@ class CampusPlanningProblem(Problem):
             xl=xl,
             xu=xu
         )
-    
+
     def _evaluate(self, X, out, *args, **kwargs):
         """
         Evaluate population
@@ -1740,25 +1740,25 @@ class CampusPlanningProblem(Problem):
         pop_size = X.shape[0]
         n_obj = len(self.obj_functions)
         n_constr = len(self.const_functions)
-        
+
         F = np.zeros((pop_size, n_obj))  # Objectives
         G = np.zeros((pop_size, n_constr))  # Constraints
-        
+
         for i in range(pop_size):
             # Decode solution
             solution = self._decode_solution(X[i])
-            
+
             # Evaluate objectives
             for j, obj_func in enumerate(self.obj_functions):
                 F[i, j] = obj_func(solution)
-            
+
             # Evaluate constraints (< 0 = satisfied)
             for j, const in enumerate(self.const_functions):
                 G[i, j] = -1.0 if const.check(solution) else 1.0
-        
+
         out["F"] = F
         out["G"] = G
-    
+
     def _decode_solution(self, x: np.ndarray) -> List[Building]:
         """Convert decision vector to building list"""
         solution = []
@@ -1785,7 +1785,7 @@ def optimize_with_nsga3(problem: CampusPlanningProblem,
         problem.n_obj,
         n_partitions=12
     )
-    
+
     # Algorithm setup
     algorithm = NSGA3(
         ref_dirs=ref_dirs,
@@ -1795,7 +1795,7 @@ def optimize_with_nsga3(problem: CampusPlanningProblem,
         mutation=PM(eta=20),
         eliminate_duplicates=True
     )
-    
+
     # Run optimization
     res = minimize(
         problem,
@@ -1803,7 +1803,7 @@ def optimize_with_nsga3(problem: CampusPlanningProblem,
         ('n_gen', n_gen),
         verbose=True
     )
-    
+
     return {
         'pareto_front': res.F,  # Objective values
         'pareto_set': res.X,     # Decision variables
@@ -1825,7 +1825,7 @@ import numpy as np
 from src.algorithms.hsaga import HSAGA, Building, BuildingType, Constraint
 from src.algorithms.nsga3_wrapper import CampusPlanningProblem, optimize_with_nsga3
 from src.algorithms.objectives import (
-    minimize_cost, 
+    minimize_cost,
     minimize_walking_distance,
     maximize_adjacency_satisfaction
 )
@@ -1833,86 +1833,86 @@ from src.algorithms.objectives import (
 def create_benchmark_problem(n_buildings: int = 50):
     """Create standardized benchmark problem"""
     np.random.seed(42)  # Reproducibility
-    
+
     building_types = list(BuildingType)
     buildings = []
-    
+
     for i in range(n_buildings):
         b_type = np.random.choice(building_types)
         area = np.random.uniform(1000, 5000)
         floors = np.random.randint(2, 6)
-        
+
         buildings.append(Building(f"B{i}", b_type, area, floors))
-    
+
     constraints = [
         Constraint("min_distance", {"threshold": 30}),
         Constraint("site_boundary", {"bounds": (0, 0, 1000, 1000)}),
     ]
-    
+
     objectives = [
         minimize_cost,
         minimize_walking_distance,
         maximize_adjacency_satisfaction,
     ]
-    
+
     return buildings, constraints, objectives
 
 def benchmark_hsaga(buildings, constraints, objectives, runs=3):
     """Benchmark H-SAGA"""
     results = []
-    
+
     for run in range(runs):
         print(f"H-SAGA run {run+1}/{runs}")
-        
+
         optimizer = HSAGA(buildings, (0, 0, 1000, 1000), constraints, objectives)
-        
+
         start = time.time()
         result = optimizer.optimize()
         runtime = time.time() - start
-        
+
         results.append({
             'fitness': result['fitness'],
             'runtime': runtime,
             'algorithm': 'H-SAGA'
         })
-    
+
     return results
 
 def benchmark_nsga3(buildings, constraints, objectives, runs=3):
     """Benchmark NSGA-III"""
     results = []
-    
+
     for run in range(runs):
         print(f"NSGA-III run {run+1}/{runs}")
-        
+
         problem = CampusPlanningProblem(
             buildings, (0, 0, 1000, 1000), objectives, constraints
         )
-        
+
         start = time.time()
         result = optimize_with_nsga3(problem, pop_size=100, n_gen=100)
         runtime = time.time() - start
-        
+
         # Use hypervolume as fitness metric
         hypervolume = compute_hypervolume(result['pareto_front'])
-        
+
         results.append({
             'hypervolume': hypervolume,
             'runtime': runtime,
             'n_solutions': len(result['pareto_front']),
             'algorithm': 'NSGA-III'
         })
-    
+
     return results
 
 def compute_hypervolume(pareto_front: np.ndarray) -> float:
     """Compute hypervolume indicator"""
     # Simple hypervolume (reference point = [1, 1, 1])
     reference = np.ones(pareto_front.shape[1])
-    
+
     # Sort by first objective
     sorted_front = pareto_front[np.argsort(pareto_front[:, 0])]
-    
+
     volume = 0.0
     for i, point in enumerate(sorted_front):
         if np.all(point < reference):
@@ -1921,47 +1921,47 @@ def compute_hypervolume(pareto_front: np.ndarray) -> float:
                 width = point[0]
             else:
                 width = point[0] - sorted_front[i-1, 0]
-            
+
             height = reference[1] - point[1]
             depth = reference[2] - point[2]
             volume += width * height * depth
-    
+
     return volume
 
 def run_full_benchmark():
     """Run complete benchmark suite"""
     print("🏁 Starting benchmark suite...")
     print("="*60)
-    
+
     # Create problem
     buildings, constraints, objectives = create_benchmark_problem(n_buildings=50)
-    
+
     # Run benchmarks
     hsaga_results = benchmark_hsaga(buildings, constraints, objectives, runs=3)
     nsga3_results = benchmark_nsga3(buildings, constraints, objectives, runs=3)
-    
+
     # Analyze results
     print("\n📊 RESULTS:")
     print("="*60)
-    
+
     print("\nH-SAGA:")
     for i, r in enumerate(hsaga_results):
         print(f"  Run {i+1}: fitness={r['fitness']:.4f}, time={r['runtime']:.1f}s")
-    
+
     print("\nNSGA-III:")
     for i, r in enumerate(nsga3_results):
         print(f"  Run {i+1}: HV={r['hypervolume']:.4f}, "
               f"n_sol={r['n_solutions']}, time={r['runtime']:.1f}s")
-    
+
     # Summary statistics
     hsaga_avg_time = np.mean([r['runtime'] for r in hsaga_results])
     nsga3_avg_time = np.mean([r['runtime'] for r in nsga3_results])
-    
+
     print("\n📈 SUMMARY:")
     print(f"  H-SAGA avg runtime: {hsaga_avg_time:.1f}s")
     print(f"  NSGA-III avg runtime: {nsga3_avg_time:.1f}s")
     print(f"  Speedup: {nsga3_avg_time / hsaga_avg_time:.2f}x")
-    
+
     return {
         'hsaga': hsaga_results,
         'nsga3': nsga3_results
@@ -2111,9 +2111,9 @@ with st.sidebar:
         if st.button("🇬🇧 English", use_container_width=True):
             st.session_state.lang = 'en'
             st.rerun()
-    
+
     st.header(t('sidebar_header'))
-    
+
     # Site parameters
     site_size = st.slider(
         t('site_size'),
@@ -2122,7 +2122,7 @@ with st.sidebar:
         value=1000,
         step=100
     )
-    
+
     n_buildings = st.slider(
         t('n_buildings'),
         min_value=10,
@@ -2130,20 +2130,20 @@ with st.sidebar:
         value=50,
         step=5
     )
-    
+
     # Optimization preset
     opt_preset = st.radio(
         t('optimization_time'),
         options=['quick', 'balanced', 'thorough'],
         format_func=t
     )
-    
+
     preset_params = {
         'quick': {'sa_iter': 50, 'ga_gen': 20},
         'balanced': {'sa_iter': 100, 'ga_gen': 50},
         'thorough': {'sa_iter': 200, 'ga_gen': 100}
     }
-    
+
     # Building type distribution
     st.subheader(t('building_types'))
     type_dist = {}
@@ -2157,7 +2157,7 @@ with st.sidebar:
             step=5,
             key=f"dist_{key}"
         ) / 100
-    
+
     # Normalize distribution
     total = sum(type_dist.values())
     if total > 0:
@@ -2169,9 +2169,9 @@ st.markdown(f"*{t('subtitle')}*")
 
 # Run optimization button
 if st.button(t('run_optimization'), type="primary", use_container_width=True):
-    with st.spinner('⏳ Optimizasyon çalışıyor...' if st.session_state.lang == 'tr' 
+    with st.spinner('⏳ Optimizasyon çalışıyor...' if st.session_state.lang == 'tr'
                     else '⏳ Running optimization...'):
-        
+
         # Generate buildings
         buildings = []
         for i in range(n_buildings):
@@ -2183,31 +2183,31 @@ if st.button(t('run_optimization'), type="primary", use_container_width=True):
             area = np.random.uniform(1000, 5000)
             floors = np.random.randint(2, 6)
             buildings.append(Building(f"B{i}", btype, area, floors))
-        
+
         # Setup optimization
         constraints = [
             Constraint("min_distance", {"threshold": 30}),
             Constraint("site_boundary", {"bounds": (0, 0, site_size, site_size)}),
         ]
-        
+
         objectives = [
             minimize_cost,
             minimize_walking_distance
         ]
-        
+
         # Run H-SAGA
-        optimizer = HSAGA(buildings, (0, 0, site_size, site_size), 
+        optimizer = HSAGA(buildings, (0, 0, site_size, site_size),
                          constraints, objectives)
         optimizer.sa_iterations = preset_params[opt_preset]['sa_iter']
         optimizer.ga_generations = preset_params[opt_preset]['ga_gen']
-        
+
         result = optimizer.optimize()
-        
+
         # Generate roads
         tensor_gen = TensorFieldGenerator(grid_size=100, cell_size=site_size/100)
         tensor_gen.generate(result['solution'])
         integrator = StreamlineIntegrator(tensor_gen)
-        
+
         # Seed points for roads
         seed_points = [
             (site_size/2, site_size/2),
@@ -2215,24 +2215,24 @@ if st.button(t('run_optimization'), type="primary", use_container_width=True):
             (3*site_size/4, 3*site_size/4)
         ]
         roads = integrator.generate_road_network(seed_points)
-        
+
         # Store in session state
         st.session_state.result = result
         st.session_state.roads = roads
         st.session_state.buildings = buildings
         st.session_state.site_size = site_size
         st.session_state.optimized = True
-    
+
     st.success('✅ Optimizasyon tamamlandı!' if st.session_state.lang == 'tr'
                else '✅ Optimization complete!')
 
 # Display results
 if st.session_state.optimized:
     st.header(t('results_header'))
-    
+
     # Metrics
     col1, col2, col3, col4 = st.columns(4)
-    
+
     with col1:
         cost = minimize_cost(st.session_state.result['solution'])
         st.metric(
@@ -2240,7 +2240,7 @@ if st.session_state.optimized:
             f"{cost*100:.1f}M TL",
             delta=None
         )
-    
+
     with col2:
         walking = minimize_walking_distance(st.session_state.result['solution'])
         st.metric(
@@ -2248,22 +2248,22 @@ if st.session_state.optimized:
             f"{walking*600:.0f}m",
             delta=None
         )
-    
+
     with col3:
         st.metric(
             "Buildings",
             len(st.session_state.result['solution'])
         )
-    
+
     with col4:
         st.metric(
             t('runtime'),
             f"{st.session_state.result['runtime']:.1f}s"
         )
-    
+
     # Map visualization
     st.subheader("🗺️ Campus Layout")
-    
+
     # Create Folium map
     center = [st.session_state.site_size/2, st.session_state.site_size/2]
     m = folium.Map(
@@ -2271,7 +2271,7 @@ if st.session_state.optimized:
         zoom_start=15,
         tiles='OpenStreetMap'
     )
-    
+
     # Add buildings
     building_colors = {
         BuildingType.RESIDENTIAL: 'blue',
@@ -2280,7 +2280,7 @@ if st.session_state.optimized:
         BuildingType.HEALTH: 'red',
         BuildingType.SOCIAL: 'purple'
     }
-    
+
     for building in st.session_state.result['solution']:
         folium.CircleMarker(
             location=[building.position[1], building.position[0]],
@@ -2290,7 +2290,7 @@ if st.session_state.optimized:
             fill=True,
             fillOpacity=0.6
         ).add_to(m)
-    
+
     # Add roads
     for road in st.session_state.roads:
         road_coords = [(p[1], p[0]) for p in road]
@@ -2300,15 +2300,15 @@ if st.session_state.optimized:
             weight=3,
             opacity=0.8
         ).add_to(m)
-    
+
     # Display map
     st_folium(m, width=1200, height=600)
-    
+
     # Convergence plot
     st.subheader("📈 Convergence")
-    
+
     fig = go.Figure()
-    
+
     # SA convergence
     fig.add_trace(go.Scatter(
         y=optimizer.history['sa_fitness'],
@@ -2316,7 +2316,7 @@ if st.session_state.optimized:
         name='SA Phase',
         line=dict(color='red', width=2)
     ))
-    
+
     # GA convergence
     fig.add_trace(go.Scatter(
         y=optimizer.history['ga_fitness'],
@@ -2324,15 +2324,15 @@ if st.session_state.optimized:
         name='GA Phase',
         line=dict(color='blue', width=2)
     ))
-    
+
     fig.update_layout(
         xaxis_title='Iteration',
         yaxis_title='Fitness',
         hovermode='x unified'
     )
-    
+
     st.plotly_chart(fig, use_container_width=True)
-    
+
     # Export button
     if st.button(t('export'), use_container_width=True):
         # Create export data
@@ -2357,7 +2357,7 @@ if st.session_state.optimized:
                 'runtime': st.session_state.result['runtime']
             }
         }
-        
+
         # Download JSON
         st.download_button(
             label="📥 Download JSON",
@@ -2688,25 +2688,25 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: macos-latest  # M1 runner if available
-    
+
     steps:
     - uses: actions/checkout@v3
-    
+
     - name: Set up Python 3.11
       uses: actions/setup-python@v4
       with:
         python-version: 3.11
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pytest pytest-cov
-    
+
     - name: Run tests
       run: |
         pytest tests/ -v --cov=src --cov-report=xml
-    
+
     - name: Upload coverage
       uses: codecov/codecov-action@v3
       with:
@@ -2780,23 +2780,23 @@ Tone: Professional but friendly
 def minimize_cost(solution: List[Building]) -> float:
     """
     Calculate total construction cost objective.
-    
+
     This objective function computes the total construction cost
     based on building area and type-specific cost rates. The result
     is normalized to [0, 1] range for fair weighting with other objectives.
-    
+
     Args:
         solution: List of Building objects with assigned positions
-        
+
     Returns:
         Normalized cost value in [0, 1] where lower is better
-        
+
     Example:
         >>> buildings = [Building("B1", BuildingType.RESIDENTIAL, 3000, 2)]
         >>> cost = minimize_cost(buildings)
         >>> print(f"Cost: {cost:.4f}")
         Cost: 0.0450
-        
+
     Note:
         Cost rates are based on 2025 Turkish construction market data:
         - Residential: 1,500 TL/m²
@@ -2804,7 +2804,7 @@ def minimize_cost(solution: List[Building]) -> float:
         - Administrative: 1,800 TL/m²
         - Health: 2,500 TL/m²
         - Social: 1,600 TL/m²
-        
+
     See Also:
         - :func:`minimize_walking_distance`: Accessibility objective
         - :func:`maximize_adjacency_satisfaction`: Spatial relationships

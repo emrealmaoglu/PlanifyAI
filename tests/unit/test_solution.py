@@ -1,10 +1,11 @@
 """
 Unit tests for Solution class
 """
-import pytest
 import numpy as np
-from src.algorithms.solution import Solution
+import pytest
+
 from src.algorithms.building import Building, BuildingType
+from src.algorithms.solution import Solution
 
 
 class TestSolutionCreation:
