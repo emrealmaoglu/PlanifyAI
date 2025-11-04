@@ -12,14 +12,15 @@
 
 ## 📋 Project Status
 
-**🚀 Week 1 (Nov 3-10, 2025):** Setup & Core Algorithm  
+**🚀 Week 1 (Nov 3-10, 2025):** Setup & Core Algorithm
 **Progress:** 🟩🟩🟩⬜⬜⬜⬜⬜ 25%
 
 ### Current Week Goals
 - [x] Development environment setup (Day 1)
-- [ ] H-SAGA algorithm implementation (Days 2-3)
+- [x] H-SAGA SA phase implementation (Day 2)
+- [ ] H-SAGA GA phase implementation (Day 3)
 - [ ] Multi-objective fitness functions (Day 4)
-- [ ] Unit tests (80%+ coverage) (Day 5)
+- [x] Unit tests (97% coverage achieved) (Day 2)
 - [ ] Integration & optimization (Days 6-7)
 
 ---
@@ -107,6 +108,46 @@ pytest tests/unit/test_hsaga.py -v
 
 # Run benchmarks
 pytest tests/benchmarks/ --benchmark-only
+
+# Run performance benchmarks
+python scripts/run_benchmarks.py
+```
+
+---
+
+## 🔬 Performance Profiling
+
+PlanifyAI includes built-in performance profiling utilities:
+
+```python
+from src.utils.profiling import profile_optimization
+
+@profile_optimization
+def optimize():
+    # Your optimization code
+    pass
+```
+
+Profiles are automatically saved to `outputs/` directory. Use `snakeviz` to visualize:
+
+```bash
+pip install snakeviz
+snakeviz outputs/optimize_profile.prof
+```
+
+**Example usage:**
+```python
+from src.utils.profiling import profile_function, analyze_profile
+import cProfile
+
+# Profile a function
+profiler = cProfile.Profile()
+profiler.enable()
+
+result = optimizer.optimize()
+
+profiler.disable()
+analyze_profile(profiler, top_n=20)
 ```
 
 ---
@@ -206,8 +247,8 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 👤 Author
 
-**[Your Name]**  
-Computer Science / Engineering Student  
+**[Your Name]**
+Computer Science / Engineering Student
 [University Name]
 
 - GitHub: [@emrealmaoglu](https://github.com/emrealmaoglu)
@@ -225,8 +266,8 @@ Computer Science / Engineering Student
 
 ## 📅 Timeline
 
-**Start:** November 3, 2025  
-**MVP Deadline:** December 30, 2025 (8 weeks)  
+**Start:** November 3, 2025
+**MVP Deadline:** December 30, 2025 (8 weeks)
 **Defense:** January 2026
 
 ---
