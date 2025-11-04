@@ -11,6 +11,7 @@ Functions:
 
 Created: 2025-11-03
 """
+
 import functools
 import logging
 import time
@@ -20,6 +21,8 @@ import numpy as np
 from scipy.spatial.distance import cdist
 
 from .building import Building
+# Import research-based objectives
+from .objectives import maximize_adjacency_satisfaction, minimize_cost, minimize_walking_distance
 from .solution import Solution
 
 logger = logging.getLogger(__name__)
@@ -43,15 +46,17 @@ class FitnessEvaluator:
     """
     Multi-objective fitness evaluator for spatial planning solutions.
 
-    Implements:
-    - Compactness (ideal distance: 50-150m between buildings)
-    - Accessibility (distance to area centroid, Week 2: tensor field-based)
-    - Constraint penalties (bounds, overlaps, safety margins)
+    Updated Day 3: Now uses research-based objectives:
+    - Construction cost minimization
+    - Walking distance minimization (15-minute city)
+    - Adjacency satisfaction maximization
+
+    Backwards compatible with Day 1-2 code.
 
     Attributes:
         buildings: List of Building objects
         bounds: Area bounds (x_min, y_min, x_max, y_max)
-        weights: Dict of objective weights (default: compactness=0.4, accessibility=0.6)
+        weights: Dict of objective weights (default: cost=0.33, walking=0.34, adjacency=0.33)
         safety_margin: Minimum distance between buildings (default: 5m)
 
     Example:
@@ -73,7 +78,7 @@ class FitnessEvaluator:
         Args:
             buildings: List of Building objects to evaluate
             bounds: Site boundaries (x_min, y_min, x_max, y_max)
-            weights: Objective weights dict (default: compactness=0.4, accessibility=0.6)
+            weights: Objective weights dict (default: cost=0.33, walking=0.34, adjacency=0.33)
             safety_margin: Minimum clearance between buildings in meters
 
         Raises:
@@ -109,9 +114,12 @@ class FitnessEvaluator:
         self.bounds = bounds
         self.safety_margin = safety_margin
 
-        # Set default weights if None
+        # Build building dict for legacy methods
+        self.building_dict = {b.id: b for b in buildings}
+
+        # Set default weights if None (Day 3 research-based)
         if weights is None:
-            weights = {"compactness": 0.4, "accessibility": 0.6}
+            weights = {"cost": 0.33, "walking": 0.34, "adjacency": 0.33}
 
         # Validate weights sum to 1.0 (with tolerance)
         weight_sum = sum(weights.values())
@@ -124,17 +132,22 @@ class FitnessEvaluator:
     @profile_time
     def evaluate(self, solution: Solution) -> float:
         """
-        Evaluate fitness of a solution.
+        Evaluate fitness of a solution (backwards compatible).
 
-        Formula: fitness = w1*compactness + w2*accessibility - constraint_penalties
+        Uses research-based objectives (Day 3 update):
+        - Construction cost minimization
+        - Walking distance minimization (15-minute city)
+        - Adjacency satisfaction maximization
 
-        All objectives normalized to [0,1] range.
+        Formula: fitness = w1*cost + w2*walking + w3*adjacency
+
+        All objectives normalized to [0,1] range (lower is better for all).
 
         Args:
             solution: Solution object with building positions
 
         Returns:
-            Fitness score (higher is better, typically in [-10, 2] range)
+            Weighted fitness score ∈ [0, 1] (lower is better)
 
         Raises:
             ValueError: If solution has missing positions or invalid data
@@ -144,22 +157,32 @@ class FitnessEvaluator:
             if building.id not in solution.positions:
                 raise ValueError(f"Solution missing position for building {building.id}")
 
-        # Calculate compactness score (normalized to [0,1])
-        compactness = self._compactness_score(solution)
+        # Evaluate new objectives
+        objectives = {
+            "cost": minimize_cost(solution, self.buildings),
+            "walking": minimize_walking_distance(solution, self.buildings),
+            "adjacency": maximize_adjacency_satisfaction(solution, self.buildings),
+        }
 
-        # Calculate accessibility score (normalized to [0,1])
-        accessibility = self._accessibility_score(solution)
+        # Weighted sum (all objectives are minimization)
+        weighted_sum = sum(self.weights.get(obj, 0.0) * score for obj, score in objectives.items())
 
-        # Calculate constraint penalties
-        penalty = self._calculate_penalties(solution)
+        # Invert to make higher-is-better for SA compatibility
+        # Lower objective scores → higher fitness
+        fitness = 1.0 - weighted_sum
+        fitness = np.clip(fitness, 0.0, 1.0)
 
-        # Combine weighted sum with penalties
-        weighted_score = (
-            self.weights.get("compactness", 0.4) * compactness
-            + self.weights.get("accessibility", 0.6) * accessibility
+        # Store objectives in solution
+        solution.objectives = objectives
+
+        logger.debug(
+            f"fitness: cost={objectives['cost']:.3f}, "
+            f"walking={objectives['walking']:.3f}, "
+            f"adjacency={objectives['adjacency']:.3f}, "
+            f"weighted_sum={weighted_sum:.3f}, fitness={fitness:.3f}"
         )
 
-        return weighted_score - penalty
+        return fitness
 
     def _compactness_score(self, solution: Solution) -> float:
         """

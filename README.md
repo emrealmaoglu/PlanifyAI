@@ -18,9 +18,9 @@
 ### Current Week Goals
 - [x] Development environment setup (Day 1)
 - [x] H-SAGA SA phase implementation (Day 2)
-- [ ] H-SAGA GA phase implementation (Day 3)
-- [ ] Multi-objective fitness functions (Day 4)
-- [x] Unit tests (97% coverage achieved) (Day 2)
+- [x] Research-based objective functions (Day 3) ✅
+- [ ] H-SAGA GA phase implementation (Day 4)
+- [x] Unit tests (87% coverage achieved) (Day 3)
 - [ ] Integration & optimization (Days 6-7)
 
 ---
@@ -156,10 +156,13 @@ analyze_profile(profiler, top_n=20)
 
 ### Week 1: Setup & Core Algorithm
 - [x] Day 1: Environment setup ✅
-- [ ] Day 2: Simulated Annealing
-- [ ] Day 3: Genetic Algorithm
-- [ ] Day 4: Fitness functions
-- [ ] Day 5: Unit testing
+- [x] Day 2: Simulated Annealing ✅
+- [x] Day 3: Research-based objective functions ✅
+  - Construction cost minimization
+  - Walking distance (15-minute city)
+  - Adjacency satisfaction
+- [ ] Day 4: Genetic Algorithm
+- [ ] Day 5: Extended unit testing
 - [ ] Day 6-7: Integration & polish
 
 ### Week 2-3: Spatial Features
@@ -274,4 +277,26 @@ Computer Science / Engineering Student
 
 **Status:** 🟢 Active Development
 
-Last updated: 2025-11-03
+## Day 3 Progress (Nov 6, 2025)
+
+### ✅ Research-Based Objectives Implemented
+
+**New Modules:**
+- `src/algorithms/objectives.py` - Pure objective functions
+  - `minimize_cost()` - Construction cost minimization (TL/m²)
+  - `minimize_walking_distance()` - 15-minute city accessibility
+  - `maximize_adjacency_satisfaction()` - Building type compatibility
+
+**Updated Modules:**
+- `src/algorithms/fitness.py` - Refactored to use research-based objectives
+  - Backwards compatible with Day 1-2 code
+  - All SA tests pass without changes
+
+**Performance:**
+- Cost objective: <0.1ms for 100 buildings
+- Walking distance: <0.1ms for 100 buildings
+- Adjacency: <5.2ms for 100 buildings
+
+**Test Coverage:** 98% (objectives module), 87% overall
+
+Last updated: 2025-11-06

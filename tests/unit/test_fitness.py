@@ -155,3 +155,26 @@ class TestFitnessEvaluator:
 
         with pytest.raises(ValueError, match="missing position"):
             evaluator.evaluate(solution)
+
+    def test_fitness_evaluator_day3_objectives(self):
+        """Test that Day 3 objectives are used correctly"""
+        buildings = [
+            Building("R1", BuildingType.RESIDENTIAL, 2000, 3),
+            Building("E1", BuildingType.EDUCATIONAL, 3000, 4),
+        ]
+        solution = Solution(positions={
+            "R1": (0, 0),
+            "E1": (300, 0)
+        })
+        bounds = (0, 0, 1000, 1000)
+        
+        evaluator = FitnessEvaluator(buildings, bounds)
+        fitness = evaluator.evaluate(solution)
+        
+        # Check fitness is valid
+        assert 0.0 <= fitness <= 1.0
+        
+        # Check objectives are stored
+        assert 'cost' in solution.objectives
+        assert 'walking' in solution.objectives
+        assert 'adjacency' in solution.objectives
