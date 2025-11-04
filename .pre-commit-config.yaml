@@ -13,6 +13,7 @@ repos:
       - id: check-added-large-files
         args: ['--maxkb=500']
       - id: check-json
+        exclude: ^\.vscode/settings\.json$  # VSCode settings.json uses JSONC (comments allowed)
       - id: check-merge-conflict
       - id: check-case-conflict
 

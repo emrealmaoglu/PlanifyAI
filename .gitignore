@@ -38,6 +38,7 @@ venv.bak/
 # IDE & Editors
 # --------------
 .vscode/
+!.vscode/settings.json  # Allow shared editor settings
 .idea/
 *.swp
 *.swo
