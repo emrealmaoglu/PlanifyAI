@@ -145,7 +145,7 @@ pytest tests/benchmarks/ --benchmark-only
 
 **Core:**
 - Python 3.11
-- NumPy (Apple Accelerate) - 3x speedup on M1
+- NumPy (OpenBLAS/Accelerate) - 2-5x speedup on M1
 - SciPy, pandas, GeoPandas
 
 **Optimization:**
@@ -172,9 +172,14 @@ pytest tests/benchmarks/ --benchmark-only
 - Code quality: Pylint score ≥ 8.0
 
 **M1 Optimization:**
-- NumPy with Apple Accelerate (3-5x speedup)
+- NumPy with OpenBLAS (2-3x speedup, pip-installed) or Apple Accelerate (3-5x speedup, conda)
 - Multiprocessing for SA chains (4 cores)
 - Vectorized operations
+
+**Note:** Pip-installed NumPy uses OpenBLAS which is optimized for ARM64/M1. For maximum performance with Apple Accelerate, use conda:
+```bash
+conda install numpy 'libblas=*=*accelerate'
+```
 
 ---
 
