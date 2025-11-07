@@ -191,16 +191,22 @@ PlanifyAI is a spatial planning optimization system that uses hybrid metaheurist
    └─> Validity check (no overlaps, within bounds)
 
 3. Optimization Loop (H-SAGA)
-   ├─> Phase 1: Simulated Annealing
-   │   ├─> Random perturbation
+   ├─> Phase 1: Simulated Annealing (Global Exploration)
+   │   ├─> Parallel chains (4 chains for M1)
+   │   ├─> Random perturbation (Gaussian/Swap)
    │   ├─> Acceptance criterion (Metropolis)
-   │   └─> Temperature cooling
+   │   ├─> Temperature cooling (geometric)
+   │   └─> Returns best solutions from each chain
    │
-   └─> Phase 2: Genetic Algorithm
-       ├─> Selection (tournament/pareto)
-       ├─> Crossover (position swapping)
-       ├─> Mutation (small perturbations)
-       └─> Elitism (keep best solutions)
+   └─> Phase 2: Genetic Algorithm (Local Refinement)
+       ├─> Population initialization (50/30/20: SA/perturbed/random)
+       ├─> Selection (tournament, size=3)
+       ├─> Crossover (uniform, rate=0.8)
+       ├─> Mutation (multi-operator, rate=0.15)
+       │   ├─> Gaussian (70%) - local search
+       │   ├─> Swap (20%) - exploration
+       │   └─> Random Reset (10%) - escape
+       └─> Elitist replacement (keeps top N)
 
 4. Multi-Objective Evaluation
    └─> Objective 1: Cost (minimize)
@@ -250,32 +256,63 @@ def simulated_annealing_phase():
 
 #### Phase 2: Genetic Algorithm
 
+**Status**: ✅ Implemented (Day 4)
+
+The GA phase refines SA solutions through evolutionary optimization using a hybrid population initialization strategy.
+
+**Population Initialization** (Li et al. 2025):
+- 50% from best SA solutions (exploitation)
+- 30% perturbations of SA solutions (exploration)
+- 20% random solutions (diversity)
+
+**Evolution Loop**:
 ```python
-def genetic_algorithm_phase(population):
-    for generation in range(max_generations):
-        # Evaluation
-        fitness = [evaluate(sol) for sol in population]
+def genetic_refinement(sa_solutions):
+    # Initialize population from SA results
+    population = initialize_ga_population(sa_solutions)
 
-        # Selection (NSGA-III)
-        parents = select_parents(population, fitness)
+    for generation in range(generations):
+        # 1. Selection (Tournament)
+        parents = tournament_selection(population, n=population_size//2)
 
-        # Crossover
-        offspring = crossover(parents)
+        # 2. Crossover (Uniform)
+        offspring = uniform_crossover(parents, rate=0.8)
 
-        # Mutation
-        offspring = mutate(offspring)
+        # 3. Mutation (Multi-operator)
+        offspring = mutate(offspring, rate=0.15)
+        # - Gaussian: 70% (local search)
+        # - Swap: 20% (exploration)
+        # - Random Reset: 10% (escape)
 
-        # Elitism
-        population = select_elite(population + offspring)
+        # 4. Evaluation
+        evaluate(offspring)
 
-        log_generation(population)
+        # 5. Replacement (Elitist)
+        population = elitist_replacement(population, offspring)
+
+        track_convergence(population)
+
+    return top_solutions(population, n=10)
 ```
 
+**Operators**:
+- **Selection**: Tournament selection (tournament_size=3)
+- **Crossover**: Uniform crossover (each building position 50% chance from each parent)
+- **Mutation**: Multi-operator with distribution (70% Gaussian, 20% Swap, 10% Reset)
+- **Replacement**: Elitist (keeps top population_size individuals)
+
 **Key Parameters**:
-- Population size: 50-100
-- Crossover rate: 0.8-0.9
-- Mutation rate: 0.1-0.2
-- Generations: 50-200
+- Population size: 50
+- Generations: 50
+- Crossover rate: 0.8
+- Mutation rate: 0.15
+- Tournament size: 3
+- Elite size: 5
+
+**Convergence Tracking**:
+- Best fitness per generation
+- Average fitness per generation
+- Stored in `optimizer.stats['ga_best_history']` and `optimizer.stats['ga_avg_history']`
 
 ### Multi-Objective Optimization (NSGA-III)
 

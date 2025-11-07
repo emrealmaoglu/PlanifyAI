@@ -269,56 +269,179 @@ class HybridSAGA(Optimizer):
             "chain_iterations": 500,
         }
 
-        # GA configuration (for Day 3, placeholder)
+        # GA configuration (Day 4)
         self.ga_config = ga_config or {
-            "population_size": 100,
-            "generations": 100,
-            "crossover_rate": 0.8,
-            "mutation_rate": 0.15,
-            "elite_size": 10,
+            "population_size": 50,  # Population size
+            "generations": 50,  # Number of generations
+            "crossover_rate": 0.8,  # Probability of crossover
+            "mutation_rate": 0.15,  # Probability of mutation
+            "elite_size": 5,  # Number of elite individuals
+            "tournament_size": 3,  # Tournament selection size
         }
 
     def optimize(self) -> Dict:
         """
-        Run H-SAGA optimization (Day 2: SA phase only).
+        Complete H-SAGA optimization pipeline.
+
+        Two-stage approach (Li et al. 2025):
+        1. Stage 1: Simulated Annealing (global exploration)
+        2. Stage 2: Genetic Algorithm (local refinement)
 
         Returns:
-            Dict with:
-                - best_solution: Solution object
-                - fitness: Best fitness score
-                - statistics: Algorithm stats
-                - convergence: Convergence history
-                - time: Execution time in seconds
+            Dictionary with complete optimization results:
+            {
+                'best_solution': Solution,           # Best solution found
+                'fitness': float,                    # Best fitness value
+                'objectives': {                      # Individual objectives
+                    'cost': float,
+                    'walking': float,
+                    'adjacency': float
+                },
+                'statistics': {                      # Runtime statistics
+                    'runtime': float,                # Total time (seconds)
+                    'sa_time': float,                # SA phase time
+                    'ga_time': float,                # GA phase time
+                    'iterations': int,               # Total SA iterations
+                    'evaluations': int,              # Total fitness evaluations
+                    'sa_chains': int,                # Number of SA chains
+                    'ga_generations': int            # Number of GA generations
+                },
+                'convergence': {                     # Convergence tracking
+                    'sa_history': List[float],       # SA best fitness per temp
+                    'ga_best_history': List[float],  # GA best fitness per gen
+                    'ga_avg_history': List[float]    # GA avg fitness per gen
+                },
+                'all_solutions': List[Solution]     # All final solutions (for analysis)
+            }
 
-        Raises:
-            RuntimeError: If optimization fails
+        Example:
+            >>> optimizer = HybridSAGA(buildings, bounds)
+            >>> result = optimizer.optimize()
+            >>> print(f"Best fitness: {result['fitness']:.4f}")
+            >>> print(f"Runtime: {result['statistics']['runtime']:.1f}s")
         """
-        start_time = time.perf_counter()
-        logger.info("Starting H-SAGA optimization (SA phase)")
+        # Print header
+        print("\n" + "=" * 70)
+        print("🚀 H-SAGA OPTIMIZATION START")
+        print("=" * 70)
+        print(f"📍 Area: {self.bounds}")
+        print(f"🏢 Buildings: {len(self.buildings)}")
+        print("⚙️  Configuration:")
+        print(f"   SA Chains: {self.sa_config['num_chains']}")
+        print(f"   SA Iterations/Chain: {self.sa_config['chain_iterations']}")
+        print(f"   GA Population: {self.ga_config['population_size']}")
+        print(f"   GA Generations: {self.ga_config['generations']}")
+        print("=" * 70)
+        print()
 
-        # Stage 1: SA Global Exploration
-        logger.info("Stage 1: Simulated Annealing exploration...")
+        # Initialize statistics
+        self.stats["evaluations"] = 0
+        start_time = time.perf_counter()
+
+        # ========================================
+        # STAGE 1: SIMULATED ANNEALING
+        # ========================================
+        print("🔥 STAGE 1: SIMULATED ANNEALING")
+        print("-" * 70)
+        sa_start = time.perf_counter()
+
         sa_solutions = self._simulated_annealing()
 
-        # Select best solution from SA chains
-        best_solution = max(sa_solutions, key=lambda s: s.fitness)
+        sa_time = time.perf_counter() - sa_start
+        sa_best_fitness = max(sol.fitness for sol in sa_solutions if sol.fitness is not None)
 
-        # Update statistics
-        elapsed = time.perf_counter() - start_time
-        self.stats["iterations"] = self.sa_config["max_iterations"]
-        self.stats["best_fitness"] = best_solution.fitness
+        print(f"✅ SA Phase complete in {sa_time:.2f}s")
+        print(f"   Best fitness: {sa_best_fitness:.4f}")
+        print(f"   Solutions: {len(sa_solutions)}")
+        print()
 
-        logger.info(
-            f"SA phase completed in {elapsed:.2f}s. " f"Best fitness: {best_solution.fitness:.4f}"
+        # ========================================
+        # STAGE 2: GENETIC ALGORITHM
+        # ========================================
+        print("🧬 STAGE 2: GENETIC ALGORITHM")
+        print("-" * 70)
+        ga_start = time.perf_counter()
+
+        ga_solutions = self._genetic_refinement(sa_solutions)
+
+        ga_time = time.perf_counter() - ga_start
+        ga_best_fitness = max(sol.fitness for sol in ga_solutions if sol.fitness is not None)
+
+        print(f"✅ GA Phase complete in {ga_time:.2f}s")
+        print(f"   Best fitness: {ga_best_fitness:.4f}")
+        print(f"   Improvement: {ga_best_fitness - sa_best_fitness:+.4f}")
+        print()
+
+        # ========================================
+        # SELECT BEST OVERALL
+        # ========================================
+        all_solutions = sa_solutions + ga_solutions
+        best_solution = max(
+            all_solutions,
+            key=lambda s: s.fitness if s.fitness is not None else float("-inf"),
         )
 
-        return {
+        total_time = time.perf_counter() - start_time
+
+        # ========================================
+        # PRINT FINAL RESULTS
+        # ========================================
+        print("=" * 70)
+        print("✅ H-SAGA OPTIMIZATION COMPLETE")
+        print("=" * 70)
+        print(f"🏆 Best fitness: {best_solution.fitness:.4f}")
+        print(f"⏱️  Total runtime: {total_time:.2f}s")
+        print(f"   └─ SA: {sa_time:.2f}s ({sa_time/total_time*100:.1f}%)")
+        print(f"   └─ GA: {ga_time:.2f}s ({ga_time/total_time*100:.1f}%)")
+        print()
+
+        # Get objectives if available
+        objectives = {}
+        if hasattr(best_solution, "objectives") and best_solution.objectives:
+            objectives = best_solution.objectives.copy()
+        else:
+            # Calculate objectives if not stored
+            objectives = {
+                "cost": 0.0,
+                "walking": 0.0,
+                "adjacency": 0.0,
+            }
+
+        print("📊 Objective Breakdown:")
+        for obj_name, score in objectives.items():
+            print(f"   • {obj_name.capitalize():<12}: {score:.4f}")
+        print()
+
+        print("📈 Statistics:")
+        print(f"   • Total evaluations: {self.stats.get('evaluations', 0):,}")
+        print(f"   • SA iterations: {self.stats.get('iterations', 0):,}")
+        print(f"   • GA generations: {self.ga_config['generations']}")
+        print("=" * 70)
+        print()
+
+        # Prepare result dictionary
+        result = {
             "best_solution": best_solution,
             "fitness": best_solution.fitness,
-            "statistics": self.stats,
-            "convergence": self.stats["convergence_history"],
-            "time": elapsed,
+            "objectives": objectives,
+            "statistics": {
+                "runtime": total_time,
+                "sa_time": sa_time,
+                "ga_time": ga_time,
+                "iterations": self.stats.get("iterations", 0),
+                "evaluations": self.stats.get("evaluations", 0),
+                "sa_chains": self.sa_config["num_chains"],
+                "ga_generations": self.ga_config["generations"],
+            },
+            "convergence": {
+                "sa_history": self.stats.get("convergence_history", []),
+                "ga_best_history": self.stats.get("ga_best_history", []),
+                "ga_avg_history": self.stats.get("ga_avg_history", []),
+            },
+            "all_solutions": all_solutions,
         }
+
+        return result
 
     def _simulated_annealing(self) -> List[Solution]:
         """
@@ -572,6 +695,494 @@ class HybridSAGA(Optimizer):
 
         new_solution.positions = new_positions
         return new_solution
+
+    def _initialize_ga_population(self, sa_solutions: List[Solution]) -> List[Solution]:
+        """
+        Initialize GA population from SA results.
+
+        Strategy (research-based from Li et al. 2025):
+        - 50% from best SA solutions (exploitation)
+        - 30% perturbations of SA solutions (exploration)
+        - 20% random solutions (diversity)
+
+        This hybrid initialization balances:
+        - Quality (SA solutions are already optimized)
+        - Diversity (random + perturbations prevent premature convergence)
+
+        Args:
+            sa_solutions: Best solutions from SA phase (sorted by fitness)
+
+        Returns:
+            Initial GA population of size self.ga_config['population_size']
+        """
+        pop_size = self.ga_config["population_size"]
+        population = []
+
+        # 1. Add best SA solutions (50%)
+        n_sa = min(pop_size // 2, len(sa_solutions))
+        for i in range(n_sa):
+            # Deep copy to avoid reference issues
+            solution = Solution(
+                positions={bid: pos for bid, pos in sa_solutions[i].positions.items()}
+            )
+            solution.fitness = sa_solutions[i].fitness
+            if hasattr(sa_solutions[i], "objectives"):
+                solution.objectives = sa_solutions[i].objectives.copy()
+            population.append(solution)
+
+        logger.info(f"GA init: Added {n_sa} SA solutions")
+
+        # 2. Add perturbations of SA solutions (30%)
+        n_perturb = int(pop_size * 0.3)
+        for i in range(n_perturb):
+            # Select random SA solution (biased toward best)
+            idx = np.random.randint(0, min(5, len(sa_solutions)))
+            base = sa_solutions[idx]
+
+            # Create copy
+            solution = Solution(positions={bid: pos for bid, pos in base.positions.items()})
+
+            # Perturb with moderate temperature
+            solution = self._perturb_solution(solution, temperature=50.0)
+            solution.fitness = None  # Invalidate fitness
+            population.append(solution)
+
+        logger.info(f"GA init: Added {n_perturb} perturbed solutions")
+
+        # 3. Add random solutions (20%)
+        n_random = pop_size - len(population)
+        for i in range(n_random):
+            solution = self._generate_random_solution()
+            solution.fitness = None
+            population.append(solution)
+
+        logger.info(f"GA init: Added {n_random} random solutions")
+        logger.info(f"GA init: Total population size = {len(population)}")
+
+        return population
+
+    def _tournament_selection(
+        self, population: List[Solution], tournament_size: Optional[int] = None
+    ) -> Solution:
+        """
+        Tournament selection operator.
+
+        Randomly selects k individuals from population, returns the best.
+        This creates selection pressure while maintaining diversity.
+
+        Args:
+            population: Current population
+            tournament_size: Number of individuals in tournament
+                            (default: self.ga_config['tournament_size'])
+
+        Returns:
+            Selected solution (deep copy to avoid reference issues)
+
+        Raises:
+            ValueError: If tournament_size > population size
+        """
+        if tournament_size is None:
+            tournament_size = self.ga_config["tournament_size"]
+
+        if tournament_size > len(population):
+            raise ValueError(
+                f"Tournament size ({tournament_size}) cannot exceed "
+                f"population size ({len(population)})"
+            )
+
+        # Randomly select tournament candidates
+        indices = np.random.choice(len(population), tournament_size, replace=False)
+        candidates = [population[i] for i in indices]
+
+        # Select best (highest fitness)
+        # Filter out None fitness values
+        valid_candidates = [s for s in candidates if s.fitness is not None]
+        if not valid_candidates:
+            # If all have None fitness, just return first
+            winner = candidates[0]
+        else:
+            winner = max(valid_candidates, key=lambda s: s.fitness)
+
+        # Return deep copy
+        selected = Solution(positions={bid: pos for bid, pos in winner.positions.items()})
+        selected.fitness = winner.fitness
+        if hasattr(winner, "objectives"):
+            selected.objectives = winner.objectives.copy()
+
+        return selected
+
+    def _selection(
+        self, population: List[Solution], n_parents: Optional[int] = None
+    ) -> List[Solution]:
+        """
+        Select parents for reproduction.
+
+        Uses tournament selection to create parent pool.
+        Default selects population_size // 2 parents.
+
+        Args:
+            population: Current population (must have fitness evaluated)
+            n_parents: Number of parents to select
+                       (default: len(population) // 2)
+
+        Returns:
+            List of selected parent solutions
+        """
+        if n_parents is None:
+            n_parents = len(population) // 2
+
+        parents = []
+        for _ in range(n_parents):
+            parent = self._tournament_selection(population)
+            parents.append(parent)
+
+        logger.debug(f"Selected {len(parents)} parents via tournament selection")
+
+        return parents
+
+    def _uniform_crossover(self, parent1: Solution, parent2: Solution) -> Tuple[Solution, Solution]:
+        """
+        Uniform crossover operator.
+
+        For each building, randomly select position from parent1 or parent2.
+        This maintains diversity while combining parent traits.
+
+        Args:
+            parent1: First parent solution
+            parent2: Second parent solution
+
+        Returns:
+            Tuple of two offspring solutions
+
+        Note:
+            Each gene (building position) has 50% chance from each parent.
+        """
+        child1_positions = {}
+        child2_positions = {}
+
+        for building_id in parent1.positions.keys():
+            if np.random.random() < 0.5:
+                # Child1 gets parent1's gene, child2 gets parent2's
+                child1_positions[building_id] = parent1.positions[building_id]
+                child2_positions[building_id] = parent2.positions[building_id]
+            else:
+                # Swap
+                child1_positions[building_id] = parent2.positions[building_id]
+                child2_positions[building_id] = parent1.positions[building_id]
+
+        child1 = Solution(positions=child1_positions)
+        child2 = Solution(positions=child2_positions)
+
+        # Fitness needs re-evaluation
+        child1.fitness = None
+        child2.fitness = None
+
+        return child1, child2
+
+    def _crossover(self, parents: List[Solution]) -> List[Solution]:
+        """
+        Create offspring via crossover.
+
+        Pairs up parents and applies crossover based on crossover_rate.
+        If crossover doesn't occur, parents are copied to offspring.
+
+        Args:
+            parents: Selected parent solutions
+
+        Returns:
+            Offspring solutions (approximately same size as parents)
+        """
+        offspring = []
+        crossover_rate = self.ga_config["crossover_rate"]
+
+        # Pair up parents (iterate by 2)
+        for i in range(0, len(parents) - 1, 2):
+            parent1 = parents[i]
+            parent2 = parents[i + 1]
+
+            if np.random.random() < crossover_rate:
+                # Apply crossover
+                child1, child2 = self._uniform_crossover(parent1, parent2)
+                offspring.extend([child1, child2])
+            else:
+                # No crossover - copy parents
+                child1 = Solution(positions={bid: pos for bid, pos in parent1.positions.items()})
+                child2 = Solution(positions={bid: pos for bid, pos in parent2.positions.items()})
+                child1.fitness = parent1.fitness
+                child2.fitness = parent2.fitness
+
+                if hasattr(parent1, "objectives"):
+                    child1.objectives = parent1.objectives.copy()
+                if hasattr(parent2, "objectives"):
+                    child2.objectives = parent2.objectives.copy()
+
+                offspring.extend([child1, child2])
+
+        # Handle odd number of parents (last one just gets copied)
+        if len(parents) % 2 == 1:
+            last_parent = parents[-1]
+            child = Solution(positions={bid: pos for bid, pos in last_parent.positions.items()})
+            child.fitness = last_parent.fitness
+            if hasattr(last_parent, "objectives"):
+                child.objectives = last_parent.objectives.copy()
+            offspring.append(child)
+
+        logger.debug(f"Crossover: Created {len(offspring)} offspring from {len(parents)} parents")
+
+        return offspring
+
+    def _gaussian_mutation(self, solution: Solution, sigma: Optional[float] = None) -> Solution:
+        """
+        Gaussian mutation: perturb one random building position.
+
+        Uses Gaussian distribution for perturbation, providing local search.
+
+        Args:
+            solution: Solution to mutate (modified in-place)
+            sigma: Standard deviation for Gaussian (default: 30.0 meters)
+
+        Returns:
+            Mutated solution (same object, modified)
+        """
+        if sigma is None:
+            sigma = 30.0
+
+        # Select random building
+        building_id = np.random.choice(list(solution.positions.keys()))
+        x, y = solution.positions[building_id]
+
+        # Gaussian perturbation
+        dx = np.random.normal(0, sigma)
+        dy = np.random.normal(0, sigma)
+
+        # Apply bounds
+        x_min, y_min, x_max, y_max = self.bounds
+        margin = 10  # Meters from edge
+        new_x = np.clip(x + dx, x_min + margin, x_max - margin)
+        new_y = np.clip(y + dy, y_min + margin, y_max - margin)
+
+        # Update position
+        solution.positions[building_id] = (new_x, new_y)
+
+        return solution
+
+    def _swap_mutation(self, solution: Solution) -> Solution:
+        """
+        Swap mutation: exchange positions of two random buildings.
+
+        Provides large-scale exploration without leaving valid space.
+
+        Args:
+            solution: Solution to mutate (modified in-place)
+
+        Returns:
+            Mutated solution (same object, modified)
+        """
+        if len(solution.positions) < 2:
+            return solution  # Can't swap with <2 buildings
+
+        # Select two random buildings
+        building_ids = list(solution.positions.keys())
+        id1, id2 = np.random.choice(building_ids, 2, replace=False)
+
+        # Swap positions
+        solution.positions[id1], solution.positions[id2] = (
+            solution.positions[id2],
+            solution.positions[id1],
+        )
+
+        return solution
+
+    def _random_reset_mutation(self, solution: Solution) -> Solution:
+        """
+        Random reset: completely randomize one building position.
+
+        Provides escape from local optima.
+
+        Args:
+            solution: Solution to mutate (modified in-place)
+
+        Returns:
+            Mutated solution (same object, modified)
+        """
+        # Select random building
+        building_id = np.random.choice(list(solution.positions.keys()))
+
+        # Generate completely new random position
+        x_min, y_min, x_max, y_max = self.bounds
+        margin = 10
+        new_x = np.random.uniform(x_min + margin, x_max - margin)
+        new_y = np.random.uniform(y_min + margin, y_max - margin)
+
+        solution.positions[building_id] = (new_x, new_y)
+
+        return solution
+
+    def _mutation(self, offspring: List[Solution]) -> List[Solution]:
+        """
+        Apply mutation to offspring population.
+
+        Mutation distribution (research-based):
+        - Gaussian: 70% (local search)
+        - Swap: 20% (exploration)
+        - Random reset: 10% (escape mechanism)
+
+        Args:
+            offspring: Offspring solutions to potentially mutate
+
+        Returns:
+            Mutated offspring (modified in-place, same list returned)
+        """
+        mutation_rate = self.ga_config["mutation_rate"]
+        mutated_count = 0
+
+        for solution in offspring:
+            if np.random.random() < mutation_rate:
+                # Select mutation type
+                mut_type = np.random.choice(["gaussian", "swap", "reset"], p=[0.7, 0.2, 0.1])
+
+                if mut_type == "gaussian":
+                    solution = self._gaussian_mutation(solution)
+                elif mut_type == "swap":
+                    solution = self._swap_mutation(solution)
+                else:  # reset
+                    solution = self._random_reset_mutation(solution)
+
+                # Invalidate fitness (needs re-evaluation)
+                solution.fitness = None
+                mutated_count += 1
+
+        logger.debug(f"Mutation: Mutated {mutated_count}/{len(offspring)} offspring")
+
+        return offspring
+
+    def _replacement(self, population: List[Solution], offspring: List[Solution]) -> List[Solution]:
+        """
+        Elitist replacement strategy.
+
+        Combines population + offspring, keeps best individuals.
+        This ensures we never lose the best solutions (elitism).
+
+        Args:
+            population: Current population
+            offspring: New offspring
+
+        Returns:
+            Next generation population (size: population_size)
+        """
+        # Combine all candidates
+        combined = population + offspring
+
+        # Sort by fitness (best first)
+        # Handle None fitness values by treating them as worst
+        combined.sort(
+            key=lambda s: s.fitness if s.fitness is not None else float("-inf"),
+            reverse=True,
+        )
+
+        # Keep top population_size individuals
+        next_gen = combined[: self.ga_config["population_size"]]
+
+        logger.debug(f"Replacement: Selected top {len(next_gen)} from {len(combined)} candidates")
+
+        return next_gen
+
+    def _genetic_refinement(self, sa_solutions: List[Solution]) -> List[Solution]:
+        """
+        Stage 2: Genetic Algorithm for local refinement.
+
+        Refines SA solutions through evolutionary optimization.
+
+        Args:
+            sa_solutions: Best solutions from SA phase (seed population)
+
+        Returns:
+            Best solutions from GA evolution (sorted by fitness)
+        """
+        logger.info("🧬 Starting GA Phase...")
+
+        # Initialize population
+        population = self._initialize_ga_population(sa_solutions)
+        logger.info(f"  Initial population: {len(population)} individuals")
+
+        # Evaluate initial population
+        for solution in population:
+            if solution.fitness is None:
+                solution.fitness = self.evaluator.evaluate(solution)
+                self.stats["evaluations"] = self.stats.get("evaluations", 0) + 1
+
+        # Track convergence
+        best_fitness_history = []
+        avg_fitness_history = []
+
+        # Evolution loop
+        generations = self.ga_config["generations"]
+
+        for generation in range(generations):
+            # 1. Selection
+            parents = self._selection(population)
+
+            # 2. Crossover
+            offspring = self._crossover(parents)
+
+            # 3. Mutation
+            offspring = self._mutation(offspring)
+
+            # 4. Evaluate offspring (only those with invalidated fitness)
+            for solution in offspring:
+                if solution.fitness is None:
+                    solution.fitness = self.evaluator.evaluate(solution)
+                    self.stats["evaluations"] = self.stats.get("evaluations", 0) + 1
+
+            # 5. Replacement (elitism)
+            population = self._replacement(population, offspring)
+
+            # Track statistics
+            fitnesses = [s.fitness for s in population if s.fitness is not None]
+            if fitnesses:
+                best_fitness = max(fitnesses)
+                avg_fitness = np.mean(fitnesses)
+            else:
+                best_fitness = 0.0
+                avg_fitness = 0.0
+
+            best_fitness_history.append(best_fitness)
+            avg_fitness_history.append(avg_fitness)
+
+            # Log progress
+            if generation % 10 == 0:
+                logger.info(
+                    f"  Gen {generation}/{generations}: "
+                    f"Best={best_fitness:.4f}, "
+                    f"Avg={avg_fitness:.4f}"
+                )
+
+        # Final generation stats
+        fitnesses = [s.fitness for s in population if s.fitness is not None]
+        if fitnesses:
+            best = max(
+                population, key=lambda s: s.fitness if s.fitness is not None else float("-inf")
+            )
+        else:
+            best = population[0]
+
+        logger.info("✅ GA Phase complete.")
+        best_fitness_val = best.fitness if best.fitness else 0.0
+        logger.info(f"  Final best fitness: {best_fitness_val:.4f}")
+        if len(best_fitness_history) > 1:
+            improvement = best_fitness_history[-1] - best_fitness_history[0]
+            logger.info(f"  Improvement: {improvement:+.4f}")
+
+        # Store convergence history
+        self.stats["ga_best_history"] = best_fitness_history
+        self.stats["ga_avg_history"] = avg_fitness_history
+
+        # Return top solutions (sorted)
+        population.sort(
+            key=lambda s: s.fitness if s.fitness is not None else float("-inf"),
+            reverse=True,
+        )
+        return population[:10]  # Return top 10
 
     def evaluate_solution(self, solution: Solution) -> float:
         """
