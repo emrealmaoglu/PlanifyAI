@@ -21,6 +21,7 @@ import numpy as np
 from scipy.spatial.distance import cdist
 
 from .building import Building
+
 # Import research-based objectives
 from .objectives import maximize_adjacency_satisfaction, minimize_cost, minimize_walking_distance
 from .solution import Solution
