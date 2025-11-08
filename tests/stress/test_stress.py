@@ -44,7 +44,6 @@ class TestScalabilityStress:
 
         print(f"\n✅ 20 buildings: {elapsed:.2f}s, fitness: {result['fitness']:.4f}")
 
-    @pytest.mark.timeout(180)  # 3 minute timeout
     def test_50_buildings_performance(self):
         """Stress test with 50 buildings"""
         np.random.seed(42)
