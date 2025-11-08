@@ -24,7 +24,10 @@ logger = logging.getLogger(__name__)
 
 # Module-level function for multiprocessing (must be picklable)
 def _run_sa_chain_worker(
-    buildings: List[Building], bounds: Tuple[float, float, float, float], seed: int, config: Dict
+    buildings: List[Building],
+    bounds: Tuple[float, float, float, float],
+    seed: int,
+    config: Dict,
 ) -> Solution:
     """
     Module-level worker function for running SA chain in parallel.
@@ -79,7 +82,9 @@ def _run_sa_chain_worker(
             break
 
     if current is None:
-        raise RuntimeError(f"Failed to generate valid solution after {max_attempts} attempts")
+        raise RuntimeError(
+            f"Failed to generate valid solution after {max_attempts} attempts"
+        )
 
     # Initialize SA state
     current.fitness = evaluator.evaluate(current)
@@ -161,7 +166,10 @@ def _perturb_solution_worker(
         building_ids = list(new_positions.keys())
         if len(building_ids) >= 2:
             id1, id2 = np.random.choice(building_ids, size=2, replace=False)
-            new_positions[id1], new_positions[id2] = (new_positions[id2], new_positions[id1])
+            new_positions[id1], new_positions[id2] = (
+                new_positions[id2],
+                new_positions[id1],
+            )
 
     else:
         # Random reset (5%)
@@ -259,6 +267,16 @@ class HybridSAGA(Optimizer):
         # Store constraints
         self.constraints = constraints or {}
 
+        # Cache building properties for faster access (Day 5 optimization)
+        self._building_dict = {b.id: b for b in buildings}
+        self._building_ids = [b.id for b in buildings]
+        self._building_types = np.array([b.type.value for b in buildings])
+        self._building_areas = np.array([b.area for b in buildings])
+        self._building_floors = np.array([b.floors for b in buildings])
+
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"Cached building properties for {len(buildings)} buildings")
+
         # SA configuration (Li et al. 2025 + research synthesis)
         self.sa_config = sa_config or {
             "initial_temp": 1000.0,
@@ -348,7 +366,9 @@ class HybridSAGA(Optimizer):
         sa_solutions = self._simulated_annealing()
 
         sa_time = time.perf_counter() - sa_start
-        sa_best_fitness = max(sol.fitness for sol in sa_solutions if sol.fitness is not None)
+        sa_best_fitness = max(
+            sol.fitness for sol in sa_solutions if sol.fitness is not None
+        )
 
         print(f"✅ SA Phase complete in {sa_time:.2f}s")
         print(f"   Best fitness: {sa_best_fitness:.4f}")
@@ -365,7 +385,9 @@ class HybridSAGA(Optimizer):
         ga_solutions = self._genetic_refinement(sa_solutions)
 
         ga_time = time.perf_counter() - ga_start
-        ga_best_fitness = max(sol.fitness for sol in ga_solutions if sol.fitness is not None)
+        ga_best_fitness = max(
+            sol.fitness for sol in ga_solutions if sol.fitness is not None
+        )
 
         print(f"✅ GA Phase complete in {ga_time:.2f}s")
         print(f"   Best fitness: {ga_best_fitness:.4f}")
@@ -478,7 +500,11 @@ class HybridSAGA(Optimizer):
                 # Submit all tasks
                 futures = {
                     executor.submit(
-                        _run_sa_chain_worker, self.buildings, self.bounds, seed, self.sa_config
+                        _run_sa_chain_worker,
+                        self.buildings,
+                        self.bounds,
+                        seed,
+                        self.sa_config,
                     ): seed
                     for seed in range(num_chains)
                 }
@@ -497,7 +523,9 @@ class HybridSAGA(Optimizer):
                             f"fitness={solution.fitness:.4f}"
                         )
                     except Exception as e:
-                        logger.warning(f"Chain {seed} failed: {e}. Continuing with other chains.")
+                        logger.warning(
+                            f"Chain {seed} failed: {e}. Continuing with other chains."
+                        )
                         # Fallback: run this chain sequentially
                         np.random.seed(seed)
                         solution = self._run_sa_chain(seed, self.sa_config)
@@ -505,7 +533,9 @@ class HybridSAGA(Optimizer):
                         completed += 1
 
         except Exception as e:
-            logger.warning(f"Multiprocessing failed: {e}. Falling back to sequential execution.")
+            logger.warning(
+                f"Multiprocessing failed: {e}. Falling back to sequential execution."
+            )
             # Sequential fallback
             solutions = []
             for seed in range(num_chains):
@@ -627,7 +657,24 @@ class HybridSAGA(Optimizer):
                 return solution
 
         # If we get here, generation failed
-        raise RuntimeError(f"Failed to generate valid solution after {max_attempts} attempts")
+        raise RuntimeError(
+            f"Failed to generate valid solution after {max_attempts} attempts"
+        )
+
+    def _evaluate_if_needed(self, solution: Solution) -> float:
+        """
+        Evaluate solution only if fitness is None (lazy evaluation optimization).
+
+        Args:
+            solution: Solution to evaluate
+
+        Returns:
+            Fitness value
+        """
+        if solution.fitness is None:
+            solution.fitness = self.evaluator.evaluate(solution)
+            self.stats["evaluations"] = self.stats.get("evaluations", 0) + 1
+        return solution.fitness
 
     def _perturb_solution(self, solution: Solution, temperature: float) -> Solution:
         """
@@ -680,7 +727,10 @@ class HybridSAGA(Optimizer):
             building_ids = list(new_positions.keys())
             if len(building_ids) >= 2:
                 id1, id2 = np.random.choice(building_ids, size=2, replace=False)
-                new_positions[id1], new_positions[id2] = (new_positions[id2], new_positions[id1])
+                new_positions[id1], new_positions[id2] = (
+                    new_positions[id2],
+                    new_positions[id1],
+                )
 
         else:
             # Random reset (5%)
@@ -740,7 +790,9 @@ class HybridSAGA(Optimizer):
             base = sa_solutions[idx]
 
             # Create copy
-            solution = Solution(positions={bid: pos for bid, pos in base.positions.items()})
+            solution = Solution(
+                positions={bid: pos for bid, pos in base.positions.items()}
+            )
 
             # Perturb with moderate temperature
             solution = self._perturb_solution(solution, temperature=50.0)
@@ -804,7 +856,9 @@ class HybridSAGA(Optimizer):
             winner = max(valid_candidates, key=lambda s: s.fitness)
 
         # Return deep copy
-        selected = Solution(positions={bid: pos for bid, pos in winner.positions.items()})
+        selected = Solution(
+            positions={bid: pos for bid, pos in winner.positions.items()}
+        )
         selected.fitness = winner.fitness
         if hasattr(winner, "objectives"):
             selected.objectives = winner.objectives.copy()
@@ -836,11 +890,14 @@ class HybridSAGA(Optimizer):
             parent = self._tournament_selection(population)
             parents.append(parent)
 
-        logger.debug(f"Selected {len(parents)} parents via tournament selection")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Selected {len(parents)} parents via tournament selection")
 
         return parents
 
-    def _uniform_crossover(self, parent1: Solution, parent2: Solution) -> Tuple[Solution, Solution]:
+    def _uniform_crossover(
+        self, parent1: Solution, parent2: Solution
+    ) -> Tuple[Solution, Solution]:
         """
         Uniform crossover operator.
 
@@ -906,8 +963,12 @@ class HybridSAGA(Optimizer):
                 offspring.extend([child1, child2])
             else:
                 # No crossover - copy parents
-                child1 = Solution(positions={bid: pos for bid, pos in parent1.positions.items()})
-                child2 = Solution(positions={bid: pos for bid, pos in parent2.positions.items()})
+                child1 = Solution(
+                    positions={bid: pos for bid, pos in parent1.positions.items()}
+                )
+                child2 = Solution(
+                    positions={bid: pos for bid, pos in parent2.positions.items()}
+                )
                 child1.fitness = parent1.fitness
                 child2.fitness = parent2.fitness
 
@@ -921,17 +982,25 @@ class HybridSAGA(Optimizer):
         # Handle odd number of parents (last one just gets copied)
         if len(parents) % 2 == 1:
             last_parent = parents[-1]
-            child = Solution(positions={bid: pos for bid, pos in last_parent.positions.items()})
+            child = Solution(
+                positions={bid: pos for bid, pos in last_parent.positions.items()}
+            )
             child.fitness = last_parent.fitness
             if hasattr(last_parent, "objectives"):
                 child.objectives = last_parent.objectives.copy()
             offspring.append(child)
 
-        logger.debug(f"Crossover: Created {len(offspring)} offspring from {len(parents)} parents")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"Crossover: Created {len(offspring)} offspring "
+                f"from {len(parents)} parents"
+            )
 
         return offspring
 
-    def _gaussian_mutation(self, solution: Solution, sigma: Optional[float] = None) -> Solution:
+    def _gaussian_mutation(
+        self, solution: Solution, sigma: Optional[float] = None
+    ) -> Solution:
         """
         Gaussian mutation: perturb one random building position.
 
@@ -1039,7 +1108,9 @@ class HybridSAGA(Optimizer):
         for solution in offspring:
             if np.random.random() < mutation_rate:
                 # Select mutation type
-                mut_type = np.random.choice(["gaussian", "swap", "reset"], p=[0.7, 0.2, 0.1])
+                mut_type = np.random.choice(
+                    ["gaussian", "swap", "reset"], p=[0.7, 0.2, 0.1]
+                )
 
                 if mut_type == "gaussian":
                     solution = self._gaussian_mutation(solution)
@@ -1052,11 +1123,16 @@ class HybridSAGA(Optimizer):
                 solution.fitness = None
                 mutated_count += 1
 
-        logger.debug(f"Mutation: Mutated {mutated_count}/{len(offspring)} offspring")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"Mutation: Mutated {mutated_count}/{len(offspring)} offspring"
+            )
 
         return offspring
 
-    def _replacement(self, population: List[Solution], offspring: List[Solution]) -> List[Solution]:
+    def _replacement(
+        self, population: List[Solution], offspring: List[Solution]
+    ) -> List[Solution]:
         """
         Elitist replacement strategy.
 
@@ -1083,7 +1159,11 @@ class HybridSAGA(Optimizer):
         # Keep top population_size individuals
         next_gen = combined[: self.ga_config["population_size"]]
 
-        logger.debug(f"Replacement: Selected top {len(next_gen)} from {len(combined)} candidates")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"Replacement: Selected top {len(next_gen)} "
+                f"from {len(combined)} candidates"
+            )
 
         return next_gen
 
@@ -1161,7 +1241,8 @@ class HybridSAGA(Optimizer):
         fitnesses = [s.fitness for s in population if s.fitness is not None]
         if fitnesses:
             best = max(
-                population, key=lambda s: s.fitness if s.fitness is not None else float("-inf")
+                population,
+                key=lambda s: s.fitness if s.fitness is not None else float("-inf"),
             )
         else:
             best = population[0]

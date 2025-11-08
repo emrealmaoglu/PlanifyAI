@@ -104,6 +104,174 @@ def benchmark_hsaga(n_buildings, config_override=None):
     }
 
 
+def benchmark_multiple_scales():
+    """Benchmark with 10, 20, 50 buildings"""
+    print("\n" + "=" * 70)
+    print("🚀 H-SAGA MULTI-SCALE BENCHMARK")
+    print("=" * 70 + "\n")
+
+    results = []
+
+    # Test cases: (n_buildings, target_time)
+    test_cases = [(10, 30.0), (20, 60.0), (50, 120.0)]
+
+    for n_buildings, target_time in test_cases:
+        print(f"\n📊 Testing {n_buildings} buildings (target: <{target_time}s)...")
+        print("-" * 70)
+
+        # Generate campus
+        buildings = generate_test_campus(n_buildings, seed=42)
+        bounds = (0, 0, 1000, 1000)
+
+        # Create optimizer
+        optimizer = HybridSAGA(buildings, bounds)
+
+        # Adjust config for larger scales
+        if n_buildings >= 20:
+            optimizer.ga_config["generations"] = 75
+            optimizer.ga_config["population_size"] = 75
+        if n_buildings >= 50:
+            optimizer.ga_config["generations"] = 100
+            optimizer.ga_config["population_size"] = 100
+
+        # Measure memory
+        mem_before = 0
+        mem_after = 0
+        if psutil:
+            process = psutil.Process()
+            mem_before = process.memory_info().rss / 1024 / 1024
+
+        # Run optimization
+        start = time.time()
+        result = optimizer.optimize()
+        elapsed = time.time() - start
+
+        mem_used = 0
+        if psutil:
+            mem_after = process.memory_info().rss / 1024 / 1024
+            mem_used = mem_after - mem_before
+
+        # Store results
+        status = "✅" if elapsed < target_time else "❌"
+        results.append(
+            {
+                "buildings": n_buildings,
+                "runtime": elapsed,
+                "target": target_time,
+                "status": status,
+                "fitness": result["fitness"],
+                "evaluations": result["statistics"]["evaluations"],
+                "memory_mb": mem_used,
+            }
+        )
+
+        print(f"\n{status} Runtime: {elapsed:.2f}s (target: <{target_time}s)")
+        print(f"   Fitness: {result['fitness']:.4f}")
+        print(f"   Evaluations: {result['statistics']['evaluations']:,}")
+        print(f"   Memory: {mem_used:.1f} MB")
+
+    # Summary table
+    print("\n" + "=" * 70)
+    print("📊 BENCHMARK SUMMARY")
+    print("=" * 70 + "\n")
+
+    if tabulate:
+        table_data = []
+        for r in results:
+            table_data.append(
+                [
+                    r["buildings"],
+                    f"{r['runtime']:.1f}s",
+                    f"<{r['target']:.0f}s",
+                    r["status"],
+                    f"{r['fitness']:.4f}",
+                    f"{r['evaluations']:,}",
+                    f"{r['memory_mb']:.1f} MB",
+                ]
+            )
+
+        headers = [
+            "Buildings",
+            "Runtime",
+            "Target",
+            "Status",
+            "Fitness",
+            "Evals",
+            "Memory",
+        ]
+        print(tabulate(table_data, headers=headers, tablefmt="grid"))
+    else:
+        # Simple table without tabulate
+        for r in results:
+            status_str = r["status"]
+            runtime = r["runtime"]
+            target = r["target"]
+            buildings = r["buildings"]
+            print(
+                f"{buildings} buildings: {runtime:.1f}s "
+                f"(target: <{target:.0f}s) {status_str}"
+            )
+
+    # Performance scaling analysis
+    print("\n" + "=" * 70)
+    print("📈 SCALING ANALYSIS")
+    print("=" * 70 + "\n")
+
+    # Check if scaling is approximately linear
+    if len(results) >= 2:
+        r10 = results[0]
+        r20 = results[1]
+
+        time_ratio = r20["runtime"] / r10["runtime"]
+        building_ratio = r20["buildings"] / r10["buildings"]
+
+        print("10→20 buildings:")
+        print(f"  Time ratio: {time_ratio:.2f}x (expected: ~2x for linear)")
+        print(f"  Building ratio: {building_ratio:.1f}x")
+
+        efficiency = building_ratio / time_ratio
+        if efficiency >= 0.8:
+            print(f"  ✅ Good scaling (efficiency: {efficiency:.2f})")
+        elif efficiency >= 0.5:
+            print(f"  ⚠️  Acceptable scaling (efficiency: {efficiency:.2f})")
+        else:
+            print(
+                f"  ❌ Poor scaling - needs optimization (efficiency: {efficiency:.2f})"
+            )
+
+    if len(results) >= 3:
+        r20 = results[1]
+        r50 = results[2]
+
+        time_ratio = r50["runtime"] / r20["runtime"]
+        building_ratio = r50["buildings"] / r20["buildings"]
+
+        print("\n20→50 buildings:")
+        print(f"  Time ratio: {time_ratio:.2f}x (expected: ~2.5x for linear)")
+        print(f"  Building ratio: {building_ratio:.1f}x")
+
+        efficiency = building_ratio / time_ratio
+        if efficiency >= 0.8:
+            print(f"  ✅ Good scaling (efficiency: {efficiency:.2f})")
+        elif efficiency >= 0.5:
+            print(f"  ⚠️  Acceptable scaling (efficiency: {efficiency:.2f})")
+        else:
+            print(
+                f"  ❌ Poor scaling - needs optimization (efficiency: {efficiency:.2f})"
+            )
+
+    print("\n" + "=" * 70 + "\n")
+
+    # Overall assessment
+    all_passed = all(r["status"] == "✅" for r in results)
+    if all_passed:
+        print("✅ ALL PERFORMANCE TARGETS MET!")
+    else:
+        print("⚠️  Some targets not met. Consider optimization.")
+
+    return results
+
+
 def main():
     """Run benchmark suite"""
     print("\n" + "=" * 70)
@@ -189,7 +357,9 @@ def main():
 
     # Overall result
     print()
-    all_passed = all(r["runtime"] < targets.get(r["n_buildings"], float("inf")) for r in results)
+    all_passed = all(
+        r["runtime"] < targets.get(r["n_buildings"], float("inf")) for r in results
+    )
 
     if all_passed:
         print("✅ ALL PERFORMANCE TARGETS MET!")
@@ -202,5 +372,9 @@ def main():
 
 
 if __name__ == "__main__":
-    success = main()
-    sys.exit(0 if success else 1)
+    # Run multi-scale benchmark
+    results = benchmark_multiple_scales()
+
+    # Exit with appropriate code
+    all_passed = all(r["status"] == "✅" for r in results)
+    sys.exit(0 if all_passed else 1)
