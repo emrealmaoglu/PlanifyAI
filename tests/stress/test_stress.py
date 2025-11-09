@@ -81,9 +81,7 @@ class TestScalabilityStress:
 
         process = psutil.Process()
 
-        buildings = [
-            Building(f"B{i}", BuildingType.RESIDENTIAL, 2000, 3) for i in range(10)
-        ]
+        buildings = [Building(f"B{i}", BuildingType.RESIDENTIAL, 2000, 3) for i in range(10)]
 
         optimizer = HybridSAGA(buildings, (0, 0, 1000, 1000))
         optimizer.ga_config["generations"] = 100  # Long run
@@ -107,9 +105,7 @@ class TestConvergenceStress:
 
     def test_convergence_with_many_generations(self):
         """Test convergence with 200 generations"""
-        buildings = [
-            Building(f"B{i}", BuildingType.RESIDENTIAL, 2000, 3) for i in range(5)
-        ]
+        buildings = [Building(f"B{i}", BuildingType.RESIDENTIAL, 2000, 3) for i in range(5)]
 
         optimizer = HybridSAGA(buildings, (0, 0, 1000, 1000))
 
@@ -133,9 +129,7 @@ class TestConvergenceStress:
 
     def test_convergence_with_large_population(self):
         """Test with very large population (200 individuals)"""
-        buildings = [
-            Building(f"B{i}", BuildingType.RESIDENTIAL, 2000, 3) for i in range(5)
-        ]
+        buildings = [Building(f"B{i}", BuildingType.RESIDENTIAL, 2000, 3) for i in range(5)]
 
         optimizer = HybridSAGA(buildings, (0, 0, 1000, 1000))
 

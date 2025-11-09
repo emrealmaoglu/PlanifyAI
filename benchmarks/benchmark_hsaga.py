@@ -208,8 +208,7 @@ def benchmark_multiple_scales():
             target = r["target"]
             buildings = r["buildings"]
             print(
-                f"{buildings} buildings: {runtime:.1f}s "
-                f"(target: <{target:.0f}s) {status_str}"
+                f"{buildings} buildings: {runtime:.1f}s " f"(target: <{target:.0f}s) {status_str}"
             )
 
     # Performance scaling analysis
@@ -235,9 +234,7 @@ def benchmark_multiple_scales():
         elif efficiency >= 0.5:
             print(f"  ⚠️  Acceptable scaling (efficiency: {efficiency:.2f})")
         else:
-            print(
-                f"  ❌ Poor scaling - needs optimization (efficiency: {efficiency:.2f})"
-            )
+            print(f"  ❌ Poor scaling - needs optimization (efficiency: {efficiency:.2f})")
 
     if len(results) >= 3:
         r20 = results[1]
@@ -256,9 +253,7 @@ def benchmark_multiple_scales():
         elif efficiency >= 0.5:
             print(f"  ⚠️  Acceptable scaling (efficiency: {efficiency:.2f})")
         else:
-            print(
-                f"  ❌ Poor scaling - needs optimization (efficiency: {efficiency:.2f})"
-            )
+            print(f"  ❌ Poor scaling - needs optimization (efficiency: {efficiency:.2f})")
 
     print("\n" + "=" * 70 + "\n")
 
@@ -357,9 +352,7 @@ def main():
 
     # Overall result
     print()
-    all_passed = all(
-        r["runtime"] < targets.get(r["n_buildings"], float("inf")) for r in results
-    )
+    all_passed = all(r["runtime"] < targets.get(r["n_buildings"], float("inf")) for r in results)
 
     if all_passed:
         print("✅ ALL PERFORMANCE TARGETS MET!")

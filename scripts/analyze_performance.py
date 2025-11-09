@@ -48,9 +48,7 @@ def analyze_scaling():
         ax2.plot(buildings, evaluations, "o-", linewidth=2, markersize=8, color="green")
         ax2.set_xlabel("Number of Buildings", fontsize=12)
         ax2.set_ylabel("Fitness Evaluations", fontsize=12)
-        ax2.set_title(
-            "Fitness Evaluations vs Building Count", fontsize=14, fontweight="bold"
-        )
+        ax2.set_title("Fitness Evaluations vs Building Count", fontsize=14, fontweight="bold")
         ax2.grid(True, alpha=0.3)
 
         plt.tight_layout()

@@ -73,12 +73,18 @@ jobs:
 
       - name: Check code formatting with black
         run: |
-          black --check --line-length=100 src/ tests/
+          black --check --line-length=100 src/ tests/ benchmarks/ scripts/
+
+      - name: Run flake8
+        run: |
+          pip install flake8
+          flake8 src/ tests/ benchmarks/ scripts/ --max-line-length=100 --extend-ignore=E203,W503,E402 || exit 1
 
       - name: Run pylint
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
+          pip install pylint
           pylint src/ --rcfile=.pylintrc || true  # Don't fail on warnings
           pylint src/ --rcfile=.pylintrc --fail-under=8.0 || exit 1
 
@@ -86,6 +92,7 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
+          pip install mypy
           mypy src/ --config-file=mypy.ini || true  # Don't fail on type errors yet
 
   pre-commit:

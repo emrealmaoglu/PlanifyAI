@@ -39,5 +39,5 @@ repos:
       - id: flake8
         args:
           - '--max-line-length=100'
-          - '--extend-ignore=E203,W503,D,I'  # Ignore docstring and import checks (isort handles imports)
+          - '--extend-ignore=E203,W503,E402,D,I'  # Ignore E402 for benchmark/script files that need sys.path
           - '--exclude=.git,venv,.pytest_cache,htmlcov,build,dist'

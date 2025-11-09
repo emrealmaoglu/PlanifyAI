@@ -83,4 +83,3 @@ Memory efficiency improves with scale (good caching/vectorization).
 - Monitor performance with 100+ buildings in future
 - Consider distributed computing for 200+ buildings
 - Current implementation sufficient for MVP
-

@@ -88,9 +88,7 @@ class TestSpatialConstraints:
     def test_very_tight_bounds(self, minimal_bounds):
         """Test with very small bounds (200x200m)"""
         # 5 buildings in 200x200 = tight!
-        buildings = [
-            Building(f"B{i}", BuildingType.RESIDENTIAL, 1500, 2) for i in range(5)
-        ]
+        buildings = [Building(f"B{i}", BuildingType.RESIDENTIAL, 1500, 2) for i in range(5)]
 
         optimizer = HybridSAGA(buildings, minimal_bounds)
         optimizer.sa_config["iterations_per_temp"] = 10
@@ -109,9 +107,7 @@ class TestSpatialConstraints:
 
     def test_very_large_bounds(self, large_bounds):
         """Test with very large bounds (10km x 10km)"""
-        buildings = [
-            Building(f"B{i}", BuildingType.RESIDENTIAL, 2000, 3) for i in range(5)
-        ]
+        buildings = [Building(f"B{i}", BuildingType.RESIDENTIAL, 2000, 3) for i in range(5)]
 
         optimizer = HybridSAGA(buildings, large_bounds)
         optimizer.sa_config["iterations_per_temp"] = 10
@@ -128,9 +124,7 @@ class TestSpatialConstraints:
 
     def test_elongated_bounds(self):
         """Test with elongated rectangle (100x5000m)"""
-        buildings = [
-            Building(f"B{i}", BuildingType.RESIDENTIAL, 1500, 3) for i in range(5)
-        ]
+        buildings = [Building(f"B{i}", BuildingType.RESIDENTIAL, 1500, 3) for i in range(5)]
 
         optimizer = HybridSAGA(buildings, (0, 0, 100, 5000))
         optimizer.sa_config["iterations_per_temp"] = 10
@@ -174,9 +168,7 @@ class TestBuildingTypeEdgeCases:
 
     def test_all_same_building_type(self):
         """Test with all identical building types"""
-        buildings = [
-            Building(f"B{i}", BuildingType.RESIDENTIAL, 2000, 3) for i in range(8)
-        ]
+        buildings = [Building(f"B{i}", BuildingType.RESIDENTIAL, 2000, 3) for i in range(8)]
 
         optimizer = HybridSAGA(buildings, (0, 0, 1000, 1000))
         optimizer.sa_config["iterations_per_temp"] = 10
@@ -192,9 +184,7 @@ class TestBuildingTypeEdgeCases:
         """Test with maximum building type diversity"""
         # Use all available building types
         all_types = list(BuildingType)
-        buildings = [
-            Building(f"B{i}", btype, 2000, 3) for i, btype in enumerate(all_types)
-        ]
+        buildings = [Building(f"B{i}", btype, 2000, 3) for i, btype in enumerate(all_types)]
 
         optimizer = HybridSAGA(buildings, (0, 0, 1500, 1500))
         optimizer.sa_config["iterations_per_temp"] = 10
@@ -249,9 +239,7 @@ class TestConfigurationEdgeCases:
 
     def test_minimal_sa_configuration(self):
         """Test with minimal SA iterations"""
-        buildings = [
-            Building(f"B{i}", BuildingType.RESIDENTIAL, 2000, 3) for i in range(5)
-        ]
+        buildings = [Building(f"B{i}", BuildingType.RESIDENTIAL, 2000, 3) for i in range(5)]
 
         optimizer = HybridSAGA(buildings, (0, 0, 1000, 1000))
 
@@ -269,9 +257,7 @@ class TestConfigurationEdgeCases:
 
     def test_large_population_small_generations(self):
         """Test with large population but few generations"""
-        buildings = [
-            Building(f"B{i}", BuildingType.RESIDENTIAL, 2000, 3) for i in range(5)
-        ]
+        buildings = [Building(f"B{i}", BuildingType.RESIDENTIAL, 2000, 3) for i in range(5)]
 
         optimizer = HybridSAGA(buildings, (0, 0, 1000, 1000))
 
@@ -287,9 +273,7 @@ class TestConfigurationEdgeCases:
 
     def test_small_population_many_generations(self):
         """Test with small population but many generations"""
-        buildings = [
-            Building(f"B{i}", BuildingType.RESIDENTIAL, 2000, 3) for i in range(5)
-        ]
+        buildings = [Building(f"B{i}", BuildingType.RESIDENTIAL, 2000, 3) for i in range(5)]
 
         optimizer = HybridSAGA(buildings, (0, 0, 1000, 1000))
 
