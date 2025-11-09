@@ -1,0 +1,48 @@
+{
+  "name": "Bilkent University",
+  "location": "Ankara, Turkey",
+  "boundary": {
+    "type": "Polygon",
+    "coordinates": [[
+      [0, 0],
+      [1200, 0],
+      [1200, 1600],
+      [0, 1600],
+      [0, 0]
+    ]]
+  },
+  "existing_buildings": [
+    {
+      "id": "existing_library",
+      "type": "library",
+      "position": [600, 800],
+      "area": 5500,
+      "floors": 5
+    },
+    {
+      "id": "existing_faculty_building",
+      "type": "educational",
+      "position": [300, 400],
+      "area": 5000,
+      "floors": 4
+    },
+    {
+      "id": "existing_dorm",
+      "type": "residential",
+      "position": [900, 1300],
+      "area": 4500,
+      "floors": 6
+    }
+  ],
+  "constraints": {
+    "setback_from_boundary": 10,
+    "coverage_ratio_max": 0.32,
+    "far_max": 2.1,
+    "min_green_space_ratio": 0.38
+  },
+  "metadata": {
+    "total_area_m2": 1920000,
+    "student_count": 13000,
+    "established": 1984
+  }
+}

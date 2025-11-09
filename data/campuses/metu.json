@@ -1,0 +1,48 @@
+{
+  "name": "Middle East Technical University (METU)",
+  "location": "Ankara, Turkey",
+  "boundary": {
+    "type": "Polygon",
+    "coordinates": [[
+      [0, 0],
+      [1500, 0],
+      [1500, 1800],
+      [0, 1800],
+      [0, 0]
+    ]]
+  },
+  "existing_buildings": [
+    {
+      "id": "existing_library",
+      "type": "library",
+      "position": [750, 900],
+      "area": 6000,
+      "floors": 5
+    },
+    {
+      "id": "existing_engineering",
+      "type": "educational",
+      "position": [400, 500],
+      "area": 4500,
+      "floors": 4
+    },
+    {
+      "id": "existing_student_center",
+      "type": "social",
+      "position": [1100, 1400],
+      "area": 3500,
+      "floors": 3
+    }
+  ],
+  "constraints": {
+    "setback_from_boundary": 15,
+    "coverage_ratio_max": 0.25,
+    "far_max": 1.8,
+    "min_green_space_ratio": 0.45
+  },
+  "metadata": {
+    "total_area_m2": 2700000,
+    "student_count": 28000,
+    "established": 1956
+  }
+}

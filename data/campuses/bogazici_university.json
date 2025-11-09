@@ -1,0 +1,48 @@
+{
+  "name": "Boğaziçi University",
+  "location": "Istanbul, Turkey",
+  "boundary": {
+    "type": "Polygon",
+    "coordinates": [[
+      [0, 0],
+      [800, 0],
+      [800, 1200],
+      [0, 1200],
+      [0, 0]
+    ]]
+  },
+  "existing_buildings": [
+    {
+      "id": "existing_library",
+      "type": "library",
+      "position": [400, 600],
+      "area": 5000,
+      "floors": 4
+    },
+    {
+      "id": "existing_admin",
+      "type": "administrative",
+      "position": [200, 200],
+      "area": 3000,
+      "floors": 3
+    },
+    {
+      "id": "existing_dorm",
+      "type": "residential",
+      "position": [600, 1000],
+      "area": 4000,
+      "floors": 5
+    }
+  ],
+  "constraints": {
+    "setback_from_boundary": 10,
+    "coverage_ratio_max": 0.3,
+    "far_max": 2.0,
+    "min_green_space_ratio": 0.4
+  },
+  "metadata": {
+    "total_area_m2": 960000,
+    "student_count": 15000,
+    "established": 1863
+  }
+}
