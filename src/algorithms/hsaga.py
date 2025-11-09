@@ -10,7 +10,7 @@ Created: 2025-11-03
 """
 import logging
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -18,6 +18,10 @@ from .base import Optimizer
 from .building import Building
 from .fitness import FitnessEvaluator
 from .solution import Solution
+
+if TYPE_CHECKING:
+    from ..constraints.spatial_constraints import ConstraintManager
+    from ..data.campus_data import CampusData
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +218,8 @@ class HybridSAGA(Optimizer):
         self,
         buildings: List[Building],
         bounds: Tuple[float, float, float, float],
+        campus_data: Optional["CampusData"] = None,
+        constraint_manager: Optional["ConstraintManager"] = None,
         constraints: Optional[Dict] = None,
         sa_config: Optional[Dict] = None,
         ga_config: Optional[Dict] = None,
@@ -224,7 +230,9 @@ class HybridSAGA(Optimizer):
         Args:
             buildings: List of Building objects to place
             bounds: Site boundaries (x_min, y_min, x_max, y_max)
-            constraints: Optional constraints dict (green_areas, obstacles, etc.)
+            campus_data: Optional campus data (if provided, bounds can be derived)
+            constraint_manager: Optional constraint manager for spatial constraints
+            constraints: Optional constraints dict (legacy, for backwards compatibility)
             sa_config: Optional SA configuration override
             ga_config: Optional GA configuration (for Day 3)
 
@@ -234,6 +242,13 @@ class HybridSAGA(Optimizer):
         # Validate buildings
         if not buildings:
             raise ValueError("buildings list cannot be empty")
+
+        # Handle campus_data and bounds
+        if campus_data is not None:
+            # Use bounds from campus_data if bounds not explicitly provided
+            # For now, we still require bounds, but can derive from campus_data if needed
+            if bounds is None or bounds == (0, 0, 0, 0):
+                bounds = campus_data.get_bounds()
 
         # Validate bounds
         if len(bounds) != 4:
@@ -262,7 +277,11 @@ class HybridSAGA(Optimizer):
         # Initialize fitness evaluator
         self.evaluator = FitnessEvaluator(buildings, bounds)
 
-        # Store constraints
+        # Store campus data and constraint manager
+        self.campus_data = campus_data
+        self.constraint_manager = constraint_manager
+
+        # Store legacy constraints (for backwards compatibility)
         self.constraints = constraints or {}
 
         # Cache building properties for faster access (Day 5 optimization)
@@ -435,11 +454,27 @@ class HybridSAGA(Optimizer):
         print("=" * 70)
         print()
 
+        # Calculate constraint information if available
+        constraint_info = {}
+        if self.constraint_manager is not None and self.campus_data is not None:
+            constraint_info = {
+                "satisfied": self.constraint_manager.check_all(
+                    best_solution, self.campus_data, self.buildings
+                ),
+                "violations": self.constraint_manager.violations(
+                    best_solution, self.campus_data, self.buildings
+                ),
+                "penalty": self.constraint_manager.total_penalty(
+                    best_solution, self.campus_data, self.buildings
+                ),
+            }
+
         # Prepare result dictionary
         result = {
             "best_solution": best_solution,
             "fitness": best_solution.fitness,
             "objectives": objectives,
+            "constraints": constraint_info,
             "statistics": {
                 "runtime": total_time,
                 "sa_time": sa_time,
@@ -653,14 +688,29 @@ class HybridSAGA(Optimizer):
         """
         Evaluate solution only if fitness is None (lazy evaluation optimization).
 
+        Applies constraint penalties if constraint_manager is available.
+
         Args:
             solution: Solution to evaluate
 
         Returns:
-            Fitness value
+            Fitness value (with constraint penalties applied)
         """
         if solution.fitness is None:
-            solution.fitness = self.evaluator.evaluate(solution)
+            # Evaluate base fitness
+            base_fitness = self.evaluator.evaluate(solution)
+
+            # Apply constraint penalties if constraint_manager exists
+            if self.constraint_manager is not None and self.campus_data is not None:
+                constraint_penalty = self.constraint_manager.total_penalty(
+                    solution, self.campus_data, self.buildings
+                )
+                # Apply penalty: max 50% reduction in fitness
+                penalty_factor = min(constraint_penalty, 0.5)
+                solution.fitness = base_fitness * (1.0 - penalty_factor)
+            else:
+                solution.fitness = base_fitness
+
             self.stats["evaluations"] = self.stats.get("evaluations", 0) + 1
         return solution.fitness
 
