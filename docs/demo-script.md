@@ -2,8 +2,8 @@
 
 ## Demo Overview
 
-**Duration:** 5-10 minutes  
-**Audience:** Academic committee, potential users, investors  
+**Duration:** 5-10 minutes
+**Audience:** Academic committee, potential users, investors
 **Goal:** Showcase AI-powered campus planning optimization
 
 ---
@@ -279,6 +279,6 @@
 
 ---
 
-**Last Updated:** November 10, 2025  
-**Version:** 1.0  
+**Last Updated:** November 10, 2025
+**Version:** 1.0
 **Status:** Ready for Demo
