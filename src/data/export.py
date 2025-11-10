@@ -112,6 +112,81 @@ class ResultExporter:
             json.dump(geojson, f, indent=2)
 
     @staticmethod
+    def to_geojson_dict(
+        solution: Solution,
+        campus: CampusData,
+        buildings: Optional[list[Building]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Export solution as GeoJSON dictionary (for Streamlit downloads).
+
+        Args:
+            solution: Solution to export
+            campus: Campus data
+            buildings: Optional list of Building objects (for metadata)
+
+        Returns:
+            GeoJSON dictionary
+        """
+        features = []
+
+        # Add campus boundary
+        boundary_feature = {
+            "type": "Feature",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [list(campus.boundary.exterior.coords)],
+            },
+            "properties": {
+                "name": campus.name,
+                "type": "campus_boundary",
+            },
+        }
+        features.append(boundary_feature)
+
+        # Add buildings
+        building_dict = {}
+        if buildings:
+            building_dict = {b.id: b for b in buildings}
+
+        for building_id, position in solution.positions.items():
+            x, y = position
+
+            # Get building metadata
+            building_type = "unknown"
+            area = 0.0
+            floors = 0
+
+            if building_id in building_dict:
+                building = building_dict[building_id]
+                building_type = building.type.value
+                area = building.area
+                floors = building.floors
+
+            building_feature = {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [x, y],
+                },
+                "properties": {
+                    "id": building_id,
+                    "type": building_type,
+                    "area": area,
+                    "floors": floors,
+                },
+            }
+            features.append(building_feature)
+
+        # Create GeoJSON structure
+        geojson = {
+            "type": "FeatureCollection",
+            "features": features,
+        }
+
+        return geojson
+
+    @staticmethod
     def to_csv(
         solution: Solution,
         filepath: str,
@@ -156,6 +231,53 @@ class ResultExporter:
 
         df = pd.DataFrame(data)
         df.to_csv(filepath, index=False)
+
+    @staticmethod
+    def to_csv_string(
+        solution: Solution,
+        buildings: Optional[list[Building]] = None,
+    ) -> str:
+        """
+        Export building positions as CSV string (for Streamlit downloads).
+
+        Args:
+            solution: Solution to export
+            buildings: Optional list of Building objects (for metadata)
+
+        Returns:
+            CSV string
+        """
+        building_dict = {}
+        if buildings:
+            building_dict = {b.id: b for b in buildings}
+
+        data = []
+        for building_id, position in solution.positions.items():
+            x, y = position
+
+            building_type = "unknown"
+            area = 0.0
+            floors = 0
+
+            if building_id in building_dict:
+                building = building_dict[building_id]
+                building_type = building.type.value
+                area = building.area
+                floors = building.floors
+
+            data.append(
+                {
+                    "building_id": building_id,
+                    "x": x,
+                    "y": y,
+                    "type": building_type,
+                    "area": area,
+                    "floors": floors,
+                }
+            )
+
+        df = pd.DataFrame(data)
+        return df.to_csv(index=False)
 
     @staticmethod
     def to_json(result: Dict[str, Any], filepath: str) -> None:
@@ -257,3 +379,65 @@ class ResultExporter:
         # Write to file
         with open(filepath, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
+
+    @staticmethod
+    def generate_report_string(result: Dict[str, Any]) -> str:
+        """
+        Generate markdown report as string (for Streamlit downloads).
+
+        Args:
+            result: Result dictionary to export
+
+        Returns:
+            Markdown report string
+        """
+        lines = []
+        lines.append("# Optimization Report\n")
+        lines.append("## Results\n")
+
+        # Fitness
+        fitness = result.get("fitness", 0.0)
+        lines.append(f"**Best Fitness:** {fitness:.4f}\n")
+
+        # Objectives
+        objectives = result.get("objectives", {})
+        if objectives:
+            lines.append("### Objectives\n")
+            for obj_name, score in objectives.items():
+                lines.append(f"- **{obj_name.capitalize()}:** {score:.4f}")
+            lines.append("")
+
+        # Statistics
+        statistics = result.get("statistics", {})
+        if statistics:
+            lines.append("### Statistics\n")
+            lines.append(f"- **Runtime:** {statistics.get('runtime', 0):.2f}s")
+            lines.append(f"- **Evaluations:** {statistics.get('evaluations', 0):,}")
+            lines.append(f"- **Generations:** {statistics.get('ga_generations', 0)}")
+            lines.append("")
+
+        # Constraints
+        constraints = result.get("constraints", {})
+        if constraints:
+            lines.append("### Constraints\n")
+            lines.append(f"- **Satisfied:** {constraints.get('satisfied', False)}")
+            lines.append(f"- **Penalty:** {constraints.get('penalty', 0.0):.4f}")
+
+            violations = constraints.get("violations", {})
+            if violations:
+                lines.append("- **Violations:**")
+                for desc, penalty in violations.items():
+                    lines.append(f"  - {desc}: {penalty:.4f}")
+            lines.append("")
+
+        # Solution
+        best_solution = result.get("best_solution")
+        if best_solution:
+            lines.append("### Solution\n")
+            lines.append(f"- **Buildings:** {len(best_solution.positions)}")
+            lines.append("- **Positions:**")
+            for building_id, position in best_solution.positions.items():
+                lines.append(f"  - {building_id}: ({position[0]:.2f}, {position[1]:.2f})")
+            lines.append("")
+
+        return "\n".join(lines)
