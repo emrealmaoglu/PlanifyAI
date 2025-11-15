@@ -178,3 +178,73 @@ class TestCampusDataParser:
         )
         with pytest.raises(ValueError, match="min_green_space_ratio must be between 0 and 1"):
             CampusDataParser.validate_data(campus)
+
+    def test_from_dict_empty_buildings(self):
+        """Test from_dict with empty buildings list."""
+        data = {
+            "name": "Test Campus",
+            "location": "Istanbul, Turkey",
+            "boundary": {
+                "type": "Polygon",
+                "coordinates": [[[0, 0], [1000, 0], [1000, 1000], [0, 1000], [0, 0]]],
+            },
+            "existing_buildings": [],
+            "constraints": {},
+            "metadata": {},
+        }
+        campus = CampusDataParser.from_dict(data)
+        assert campus.name == "Test Campus"
+        assert len(campus.buildings) == 0
+
+    def test_from_dict_no_constraints(self):
+        """Test from_dict without constraints."""
+        data = {
+            "name": "Test Campus",
+            "location": "Istanbul, Turkey",
+            "boundary": {
+                "type": "Polygon",
+                "coordinates": [[[0, 0], [1000, 0], [1000, 1000], [0, 1000], [0, 0]]],
+            },
+        }
+        campus = CampusDataParser.from_dict(data)
+        assert campus.name == "Test Campus"
+        assert campus.constraints == {}
+
+    def test_from_dict_no_metadata(self):
+        """Test from_dict without metadata."""
+        data = {
+            "name": "Test Campus",
+            "location": "Istanbul, Turkey",
+            "boundary": {
+                "type": "Polygon",
+                "coordinates": [[[0, 0], [1000, 0], [1000, 1000], [0, 1000], [0, 0]]],
+            },
+        }
+        campus = CampusDataParser.from_dict(data)
+        assert campus.name == "Test Campus"
+        assert campus.metadata == {}
+
+    def test_from_dict_invalid_boundary_coordinates(self):
+        """Test from_dict with invalid boundary coordinates."""
+        data = {
+            "name": "Test Campus",
+            "location": "Istanbul, Turkey",
+            "boundary": {
+                "type": "Polygon",
+                "coordinates": [[[0, 0], [1000, 0]]],  # Invalid: not closed
+            },
+        }
+        # Should raise an error when trying to create Polygon
+        with pytest.raises((ValueError, TypeError)):
+            CampusDataParser.from_dict(data)
+
+    def test_validate_data_no_buildings(self):
+        """Test validate_data with no buildings."""
+        boundary = Polygon([(0, 0), (1000, 0), (1000, 1000), (0, 1000)])
+        campus = CampusData(
+            name="Test Campus",
+            location="Istanbul, Turkey",
+            boundary=boundary,
+            buildings=[],
+        )
+        assert CampusDataParser.validate_data(campus) is True
