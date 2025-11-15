@@ -20,9 +20,9 @@ from typing import Dict, List
 
 from shapely.geometry import Point
 
-from ..algorithms.building import Building
-from ..algorithms.solution import Solution
-from ..data.campus_data import CampusData
+from algorithms.building import Building
+from algorithms.solution import Solution
+from data.campus_data import CampusData
 
 
 class SpatialConstraint(ABC):

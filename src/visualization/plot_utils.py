@@ -16,9 +16,9 @@ from typing import Dict, List, Optional
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 
-from ..algorithms.building import Building, BuildingType
-from ..algorithms.solution import Solution
-from ..data.campus_data import CampusData
+from algorithms.building import Building, BuildingType
+from algorithms.solution import Solution
+from data.campus_data import CampusData
 
 
 class CampusPlotter:
