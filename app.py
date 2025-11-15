@@ -15,6 +15,8 @@ import streamlit as st
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
+from streamlit_folium import st_folium
+
 from algorithms.building import Building, BuildingType
 from algorithms.hsaga import HybridSAGA
 from constraints.spatial_constraints import (
@@ -26,6 +28,7 @@ from constraints.spatial_constraints import (
 )
 from data.export import ResultExporter
 from data.parser import CampusDataParser
+from visualization.interactive_map import InteractiveCampusMap
 from visualization.plot_utils import CampusPlotter
 
 # Page config
@@ -34,6 +37,96 @@ st.set_page_config(
     page_icon="🏛️",
     layout="wide",
     initial_sidebar_state="expanded",
+)
+
+# Custom CSS for better styling
+st.markdown(
+    """
+<style>
+    /* Main container */
+    .main .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        max-width: 1400px;
+    }
+
+    /* Headers */
+    h1 {
+        color: #1976D2;
+        font-weight: 700;
+    }
+
+    h2 {
+        color: #424242;
+        font-weight: 600;
+        margin-top: 1.5rem;
+    }
+
+    h3 {
+        color: #616161;
+        font-weight: 500;
+    }
+
+    /* Sidebar */
+    .css-1d391kg {
+        background-color: #FAFAFA;
+    }
+
+    /* Metrics */
+    [data-testid="stMetricValue"] {
+        font-size: 28px;
+        font-weight: 600;
+    }
+
+    /* Buttons */
+    .stButton > button {
+        border-radius: 8px;
+        font-weight: 500;
+        transition: all 0.3s;
+    }
+
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    /* Progress bars */
+    .stProgress > div > div {
+        border-radius: 10px;
+    }
+
+    /* Cards */
+    .stAlert {
+        border-radius: 8px;
+    }
+
+    /* Expanders */
+    .streamlit-expanderHeader {
+        font-weight: 500;
+        font-size: 18px;
+    }
+
+    /* Tables */
+    [data-testid="stDataFrame"] {
+        border-radius: 8px;
+    }
+
+    /* Hide Streamlit branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+
+    /* Custom animations */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .main > div {
+        animation: fadeIn 0.5s ease-out;
+    }
+</style>
+""",
+    unsafe_allow_html=True,
 )
 
 
@@ -59,6 +152,51 @@ def generate_buildings(n_res, n_edu, n_lib, n_adm, n_spt, n_hlt):
             floors = np.random.randint(2, 6)
             buildings.append(Building(f"B{idx:02d}", btype, area, floors))
             idx += 1
+
+    return buildings
+
+
+def generate_buildings_with_names(n_res, n_edu, n_lib, n_adm, n_spt, n_hlt):
+    """Generate buildings with semantic names"""
+    import numpy as np
+
+    buildings = []
+
+    # Type configurations: (type, count, base_name)
+    configs = [
+        (BuildingType.RESIDENTIAL, n_res, "RES"),
+        (BuildingType.EDUCATIONAL, n_edu, "EDU"),
+        (BuildingType.LIBRARY, n_lib, "LIB"),
+        (BuildingType.ADMINISTRATIVE, n_adm, "ADM"),
+        (BuildingType.SPORTS, n_spt, "SPT"),
+        (BuildingType.HEALTH, n_hlt, "HLT"),
+    ]
+
+    for btype, count, prefix in configs:
+        for i in range(count):
+            # Realistic area and floors for each type
+            if btype == BuildingType.RESIDENTIAL:
+                area = np.random.uniform(2500, 4000)
+                floors = np.random.randint(4, 8)
+            elif btype == BuildingType.EDUCATIONAL:
+                area = np.random.uniform(2000, 3500)
+                floors = np.random.randint(3, 6)
+            elif btype == BuildingType.LIBRARY:
+                area = np.random.uniform(2500, 4500)
+                floors = np.random.randint(3, 5)
+            elif btype == BuildingType.ADMINISTRATIVE:
+                area = np.random.uniform(1500, 2500)
+                floors = np.random.randint(2, 4)
+            elif btype == BuildingType.SPORTS:
+                area = np.random.uniform(3000, 5000)
+                floors = np.random.randint(1, 3)
+            else:  # HEALTH
+                area = np.random.uniform(1800, 3000)
+                floors = np.random.randint(2, 4)
+
+            # Semantic ID: RES-01, EDU-02, etc.
+            building_id = f"{prefix}-{i+1:02d}"
+            buildings.append(Building(building_id, btype, area, floors))
 
     return buildings
 
@@ -135,70 +273,186 @@ def main():
         # Building Configuration
         st.header("🏢 Building Configuration")
 
-        n_buildings = st.slider(
-            "Number of Buildings",
-            min_value=1,
-            max_value=50,
-            value=10,
-            help="Number of new buildings to optimize",
-        )
-
-        st.subheader("Building Types")
-        col1, col2 = st.columns(2)
-
-        with col1:
-            n_residential = st.number_input(
-                "Residential",
-                0,
-                n_buildings,
-                max(0, n_buildings // 3),
-                key="res",
-            )
-            n_educational = st.number_input(
-                "Educational", 0, n_buildings, max(0, n_buildings // 3), key="edu"
-            )
-            n_library = st.number_input(
-                "Library", 0, n_buildings, max(1, n_buildings // 10), key="lib"
+        # Use expander for cleaner look
+        with st.expander("📊 Building Type Distribution", expanded=True):
+            # Number of buildings
+            n_buildings = st.slider(
+                "Total Number of Buildings",
+                min_value=5,
+                max_value=50,
+                value=10,
+                step=1,
+                help="Total buildings to place on campus",
             )
 
-        with col2:
-            n_administrative = st.number_input(
-                "Administrative",
-                0,
-                n_buildings,
-                max(1, n_buildings // 10),
-                key="adm",
-            )
-            n_sports = st.number_input(
-                "Sports", 0, n_buildings, max(1, n_buildings // 10), key="spt"
-            )
-            n_health = st.number_input(
-                "Health", 0, n_buildings, max(1, n_buildings // 10), key="hlt"
+            st.markdown("---")
+            st.subheader("Building Type Breakdown")
+
+            # Quick presets
+            preset = st.selectbox(
+                "Quick Preset",
+                ["Custom", "Balanced", "Residential Focus", "Academic Focus", "Mixed Use"],
+                help="Pre-configured building distributions",
             )
 
-        # Validate total matches n_buildings
-        total_specified = (
-            n_residential + n_educational + n_library + n_administrative + n_sports + n_health
-        )
+            # Apply preset
+            if preset == "Balanced":
+                n_residential = n_buildings // 3
+                n_educational = n_buildings // 3
+                n_library = max(1, n_buildings // 10)
+                n_administrative = max(1, n_buildings // 10)
+                n_sports = max(1, n_buildings // 10)
+                n_health = n_buildings - (
+                    n_residential + n_educational + n_library + n_administrative + n_sports
+                )
+            elif preset == "Residential Focus":
+                n_residential = int(n_buildings * 0.5)
+                n_educational = int(n_buildings * 0.2)
+                n_library = max(1, n_buildings // 15)
+                n_administrative = max(1, n_buildings // 15)
+                n_sports = max(1, n_buildings // 10)
+                n_health = n_buildings - (
+                    n_residential + n_educational + n_library + n_administrative + n_sports
+                )
+            elif preset == "Academic Focus":
+                n_residential = int(n_buildings * 0.3)
+                n_educational = int(n_buildings * 0.4)
+                n_library = max(2, n_buildings // 8)
+                n_administrative = max(1, n_buildings // 10)
+                n_sports = max(1, n_buildings // 15)
+                n_health = n_buildings - (
+                    n_residential + n_educational + n_library + n_administrative + n_sports
+                )
+            elif preset == "Mixed Use":
+                n_residential = int(n_buildings * 0.25)
+                n_educational = int(n_buildings * 0.25)
+                n_library = max(1, n_buildings // 10)
+                n_administrative = max(1, n_buildings // 10)
+                n_sports = max(2, n_buildings // 8)
+                n_health = n_buildings - (
+                    n_residential + n_educational + n_library + n_administrative + n_sports
+                )
+            else:  # Custom
+                # Use session state to preserve values
+                if "building_counts" not in st.session_state:
+                    st.session_state.building_counts = {
+                        "residential": n_buildings // 3,
+                        "educational": n_buildings // 3,
+                        "library": max(1, n_buildings // 10),
+                        "administrative": max(1, n_buildings // 10),
+                        "sports": max(1, n_buildings // 10),
+                        "health": 1,
+                    }
 
-        if total_specified != n_buildings:
-            st.warning(
-                f"Total specified ({total_specified}) doesn't match "
-                f"target ({n_buildings}). Please adjust."
+            # Building type inputs (two columns for cleaner layout)
+            col1, col2 = st.columns(2)
+
+            with col1:
+                n_residential = st.number_input(
+                    "🏠 Residential Halls",
+                    0,
+                    n_buildings,
+                    value=n_residential
+                    if preset != "Custom"
+                    else st.session_state.building_counts["residential"],
+                    help="Student dormitories and housing",
+                    key="res",
+                )
+                n_educational = st.number_input(
+                    "🎓 Academic Buildings",
+                    0,
+                    n_buildings,
+                    value=n_educational
+                    if preset != "Custom"
+                    else st.session_state.building_counts["educational"],
+                    help="Classrooms, lecture halls, labs",
+                    key="edu",
+                )
+                n_library = st.number_input(
+                    "📚 Libraries",
+                    0,
+                    n_buildings,
+                    value=n_library
+                    if preset != "Custom"
+                    else st.session_state.building_counts["library"],
+                    help="Libraries and study spaces",
+                    key="lib",
+                )
+
+            with col2:
+                n_administrative = st.number_input(
+                    "🏛️ Administrative",
+                    0,
+                    n_buildings,
+                    value=n_administrative
+                    if preset != "Custom"
+                    else st.session_state.building_counts["administrative"],
+                    help="Administration and offices",
+                    key="adm",
+                )
+                n_sports = st.number_input(
+                    "⚽ Sports Facilities",
+                    0,
+                    n_buildings,
+                    value=n_sports
+                    if preset != "Custom"
+                    else st.session_state.building_counts["sports"],
+                    help="Gyms, sports complexes",
+                    key="spt",
+                )
+                n_health = st.number_input(
+                    "🏥 Health Centers",
+                    0,
+                    n_buildings,
+                    value=n_health
+                    if preset != "Custom"
+                    else st.session_state.building_counts["health"],
+                    help="Medical facilities and health services",
+                    key="hlt",
+                )
+
+            # Update session state for custom
+            if preset == "Custom":
+                st.session_state.building_counts = {
+                    "residential": n_residential,
+                    "educational": n_educational,
+                    "library": n_library,
+                    "administrative": n_administrative,
+                    "sports": n_sports,
+                    "health": n_health,
+                }
+
+            # Validation
+            total_specified = (
+                n_residential + n_educational + n_library + n_administrative + n_sports + n_health
             )
-            st.session_state.buildings = None
-        else:
-            # Generate buildings
-            buildings = generate_buildings(
-                n_residential,
-                n_educational,
-                n_library,
-                n_administrative,
-                n_sports,
-                n_health,
-            )
-            st.session_state.buildings = buildings
-            st.success(f"✅ {len(buildings)} buildings configured")
+
+            if total_specified != n_buildings:
+                st.error(
+                    f"⚠️ Total specified ({total_specified}) doesn't match "
+                    f"target ({n_buildings}). Please adjust."
+                )
+                st.session_state.buildings = None
+            else:
+                # Generate buildings with semantic names
+                buildings = generate_buildings_with_names(
+                    n_residential, n_educational, n_library, n_administrative, n_sports, n_health
+                )
+                st.session_state.buildings = buildings
+
+                # Success message with breakdown
+                st.success(
+                    f"""
+                ✅ **{len(buildings)} buildings configured:**
+
+                - 🏠 {n_residential} Residential
+                - 🎓 {n_educational} Academic
+                - 📚 {n_library} Library
+                - 🏛️ {n_administrative} Administrative
+                - ⚽ {n_sports} Sports
+                - 🏥 {n_health} Health
+                """
+                )
 
         st.divider()
 
@@ -468,68 +722,199 @@ def main():
         st.header("📊 Optimization Results")
 
         if not st.session_state.get("optimization_run", False):
-            st.info("👈 Run optimization first to see results")
+            st.info("👈 Configure campus and buildings, then run optimization to see results")
         else:
             result = st.session_state.result
             campus = st.session_state.campus_data
 
-            # Summary metrics
+            # Enhanced metrics with progress bars
+            st.subheader("Performance Metrics")
             col1, col2, col3, col4 = st.columns(4)
+
             with col1:
-                st.metric("Final Fitness", f"{result['fitness']:.4f}")
+                fitness = result["fitness"]
+                st.metric("Overall Fitness", f"{fitness:.2%}")
+                st.progress(fitness)
+
             with col2:
-                st.metric("Runtime", f"{result['statistics']['runtime']:.2f}s")
+                runtime = result["statistics"]["runtime"]
+                target_time = 30.0  # Target: <30s
+                status = "✅" if runtime < target_time else "⚠️"
+                st.metric("Runtime", f"{runtime:.2f}s", delta=f"{status}")
+                st.caption(f"Target: <{target_time}s")
+
             with col3:
-                st.metric("Evaluations", f"{result['statistics']['evaluations']:,}")
+                evals = result["statistics"]["evaluations"]
+                st.metric("Evaluations", f"{evals:,}")
+                st.caption(f"{evals/runtime:.0f} evals/sec")
+
             with col4:
                 constraint_satisfied = result.get("constraints", {}).get("satisfied", True)
-                st.metric(
-                    "Constraints",
-                    "✅ Satisfied" if constraint_satisfied else "❌ Violated",
-                )
+                constraint_penalty = result.get("constraints", {}).get("penalty", 0.0)
 
-            # Objective breakdown
-            st.subheader("Objective Breakdown")
+                if constraint_satisfied:
+                    st.metric("Constraints", "✅ Satisfied")
+                    st.success("All spatial constraints met")
+                else:
+                    st.metric("Constraints", "❌ Violated")
+                    st.error(f"Penalty: {constraint_penalty:.2%}")
+
+            # Objective breakdown with detailed cards
+            st.subheader("🎯 Objective Scores")
             obj = result["objectives"]
-            col1, col2 = st.columns([2, 1])
+
+            col1, col2, col3 = st.columns(3)
+
             with col1:
-                # Bar chart
-                import pandas as pd
-
-                df = pd.DataFrame(
-                    {
-                        "Objective": ["Cost", "Walking Distance", "Adjacency"],
-                        "Score": [obj["cost"], obj["walking"], obj["adjacency"]],
-                    }
+                cost_score = obj["cost"]
+                st.markdown(
+                    f"""
+                <div style='background-color: #E3F2FD; padding: 20px; 
+                    border-radius: 10px; border-left: 5px solid #1976D2;'>
+                    <h4 style='margin: 0; color: #1976D2;'>💰 Construction Cost</h4>
+                    <h2 style='margin: 10px 0; color: #1565C0;'>{cost_score:.1%}</h2>
+                    <p style='margin: 0; color: #424242; font-size: 14px;'>
+                        Lower construction and operational costs
+                    </p>
+                </div>
+                """,
+                    unsafe_allow_html=True,
                 )
-                st.bar_chart(df.set_index("Objective"))
+                st.progress(cost_score)
+
             with col2:
-                st.dataframe(df, use_container_width=True, hide_index=True)
+                walking_score = obj["walking"]
+                st.markdown(
+                    f"""
+                <div style='background-color: #E8F5E9; padding: 20px; 
+                    border-radius: 10px; border-left: 5px solid #388E3C;'>
+                    <h4 style='margin: 0; color: #388E3C;'>🚶 Walking Distance</h4>
+                    <h2 style='margin: 10px 0; color: #2E7D32;'>{walking_score:.1%}</h2>
+                    <p style='margin: 0; color: #424242; font-size: 14px;'>
+                        Shorter distances between buildings
+                    </p>
+                </div>
+                """,
+                    unsafe_allow_html=True,
+                )
+                st.progress(walking_score)
 
-            # Campus layout visualization
-            st.subheader("Campus Layout")
+            with col3:
+                adjacency_score = obj["adjacency"]
+                st.markdown(
+                    f"""
+                <div style='background-color: #F3E5F5; padding: 20px; 
+                    border-radius: 10px; border-left: 5px solid #7B1FA2;'>
+                    <h4 style='margin: 0; color: #7B1FA2;'>🔗 Adjacency</h4>
+                    <h2 style='margin: 10px 0; color: #6A1B9A;'>{adjacency_score:.1%}</h2>
+                    <p style='margin: 0; color: #424242; font-size: 14px;'>
+                        Compatible building types nearby
+                    </p>
+                </div>
+                """,
+                    unsafe_allow_html=True,
+                )
+                st.progress(adjacency_score)
+
+            # INTERACTIVE MAP (NEW!)
+            st.subheader("🗺️ Interactive Campus Layout")
+
+            # Map view options
+            col1, col2, col3 = st.columns([2, 1, 1])
+            with col1:
+                st.info("🔍 Use mouse to pan and zoom. Click buildings for details.")
+            with col2:
+                map_style = st.selectbox(
+                    "Map Style",
+                    ["OpenStreetMap", "CartoDB Positron", "CartoDB Dark Matter"],
+                    index=0,
+                )
+            with col3:
+                show_boundary = st.checkbox("Show Campus Boundary", value=True)
+
+            # Get buildings from session state
+            buildings = st.session_state.buildings
+
+            # Create interactive map
             try:
-                plotter = CampusPlotter(campus)
-                import tempfile
-                from pathlib import Path as PathLib
+                # Map tile style
+                tile_style = "OpenStreetMap"
+                if map_style == "CartoDB Positron":
+                    tile_style = "CartoDB positron"
+                elif map_style == "CartoDB Dark Matter":
+                    tile_style = "CartoDB dark_matter"
 
-                temp_dir = PathLib(tempfile.gettempdir())
-                plot_path = temp_dir / "campus_plot.png"
-
-                plotter.plot_solution(
-                    result["best_solution"],
-                    show_constraints=True,
-                    save_path=str(plot_path),
-                    buildings=buildings,
+                mapper = InteractiveCampusMap(
+                    campus_data=campus, buildings=buildings, show_boundary=show_boundary
+                )
+                folium_map = mapper.create_map(
+                    result["best_solution"], buildings=buildings, tiles=tile_style
                 )
 
-                st.image(str(plot_path))
+                # Display map (full width)
+                st_folium(
+                    folium_map,
+                    width=None,  # Full width
+                    height=600,
+                    returned_objects=[],  # Don't need click events for now
+                )
+
+                # Building details table
+                st.subheader("📋 Building Details")
+                building_data = []
+                for building_id, position in result["best_solution"].positions.items():
+                    building = next((b for b in buildings if b.id == building_id), None)
+                    if not building:
+                        continue
+
+                    # Use semantic name
+                    building_dict = {b.id: b for b in buildings}
+                    name = mapper._get_building_name(building, building_dict)
+
+                    building_data.append(
+                        {
+                            "Name": name,
+                            "Type": building.type.name.title(),
+                            "Area (m²)": f"{building.area:,.0f}",
+                            "Floors": building.floors,
+                            "Total Floor Area (m²)": f"{building.area * building.floors:,.0f}",
+                            "Position X": f"{position[0]:.1f}",
+                            "Position Y": f"{position[1]:.1f}",
+                        }
+                    )
+
+                if building_data:
+                    import pandas as pd
+
+                    df_buildings = pd.DataFrame(building_data)
+                    st.dataframe(df_buildings, use_container_width=True, hide_index=True)
 
             except Exception as e:
-                st.error(f"Error generating plot: {e}")
+                st.error(f"Error generating interactive map: {e}")
                 import traceback
 
                 st.code(traceback.format_exc())
+
+                # Fallback to static plot
+                st.warning("Falling back to static plot...")
+                try:
+                    plotter = CampusPlotter(campus)
+                    import tempfile
+                    from pathlib import Path as PathLib
+
+                    temp_dir = PathLib(tempfile.gettempdir())
+                    plot_path = temp_dir / "campus_plot.png"
+
+                    plotter.plot_solution(
+                        result["best_solution"],
+                        show_constraints=True,
+                        save_path=str(plot_path),
+                        buildings=buildings,
+                    )
+
+                    st.image(str(plot_path))
+                except Exception as e2:
+                    st.error(f"Error generating fallback plot: {e2}")
 
             # Convergence plot
             st.subheader("Convergence History")
