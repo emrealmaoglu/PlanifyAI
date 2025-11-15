@@ -114,6 +114,7 @@ class FitnessEvaluator:
         self.buildings = buildings
         self.bounds = bounds
         self.safety_margin = safety_margin
+        self.min_distance_between_buildings = 20.0  # Minimum 20m separation
 
         # Build building dict for legacy methods
         self.building_dict = {b.id: b for b in buildings}
@@ -136,19 +137,17 @@ class FitnessEvaluator:
         Evaluate fitness of a solution (backwards compatible).
 
         Uses research-based objectives (Day 3 update):
-        - Construction cost minimization
-        - Walking distance minimization (15-minute city)
-        - Adjacency satisfaction maximization
+        - Construction cost minimization (lower is better)
+        - Walking distance satisfaction (higher is better)
+        - Adjacency satisfaction (higher is better)
 
-        Formula: fitness = w1*cost + w2*walking + w3*adjacency
-
-        All objectives normalized to [0,1] range (lower is better for all).
+        Formula: fitness = 1.0 - (w1*cost + w2*(1-walking) + w3*(1-adjacency))
 
         Args:
             solution: Solution object with building positions
 
         Returns:
-            Weighted fitness score ∈ [0, 1] (lower is better)
+            Weighted fitness score ∈ [0, 1] (higher is better)
 
         Raises:
             ValueError: If solution has missing positions or invalid data
@@ -158,6 +157,9 @@ class FitnessEvaluator:
             if building.id not in solution.positions:
                 raise ValueError(f"Solution missing position for building {building.id}")
 
+        # Check for overlapping buildings (penalty)
+        overlap_penalty = self._calculate_overlap_penalty(solution)
+
         # Evaluate new objectives
         objectives = {
             "cost": minimize_cost(solution, self.buildings),
@@ -165,25 +167,77 @@ class FitnessEvaluator:
             "adjacency": maximize_adjacency_satisfaction(solution, self.buildings),
         }
 
-        # Weighted sum (all objectives are minimization)
-        weighted_sum = sum(self.weights.get(obj, 0.0) * score for obj, score in objectives.items())
+        # Convert satisfaction scores to "cost" scores for minimization
+        # cost: already a cost (lower is better)
+        # walking: satisfaction (higher is better) -> convert to cost (1.0 - satisfaction)
+        # adjacency: satisfaction (higher is better) -> convert to cost (1.0 - satisfaction)
+        cost_scores = {
+            "cost": objectives["cost"],
+            "walking": 1.0 - objectives["walking"],
+            "adjacency": 1.0 - objectives["adjacency"],
+        }
+
+        # Weighted sum (all converted to minimization)
+        weighted_sum = sum(self.weights.get(obj, 0.0) * score for obj, score in cost_scores.items())
+
+        # Apply overlap penalty (reduce fitness by up to 50%)
+        if overlap_penalty > 0.0:
+            weighted_sum = weighted_sum * (1.0 + 0.5 * overlap_penalty)
 
         # Invert to make higher-is-better for SA compatibility
         # Lower objective scores → higher fitness
         fitness = 1.0 - weighted_sum
         fitness = np.clip(fitness, 0.0, 1.0)
 
-        # Store objectives in solution
+        # Store objectives in solution (store satisfaction scores as-is for display)
         solution.objectives = objectives
 
         logger.debug(
             f"fitness: cost={objectives['cost']:.3f}, "
             f"walking={objectives['walking']:.3f}, "
             f"adjacency={objectives['adjacency']:.3f}, "
+            f"overlap_penalty={overlap_penalty:.3f}, "
             f"weighted_sum={weighted_sum:.3f}, fitness={fitness:.3f}"
         )
 
         return fitness
+
+    def _calculate_overlap_penalty(self, solution: Solution) -> float:
+        """
+        Calculate penalty for overlapping buildings.
+
+        Returns:
+            Penalty from 0.0 (no overlap) to 1.0 (complete overlap)
+        """
+        if len(self.buildings) < 2:
+            return 0.0
+
+        penalty = 0.0
+        pair_count = 0
+
+        for i, b1 in enumerate(self.buildings):
+            for b2 in self.buildings[i + 1 :]:
+                pos1 = np.array(solution.positions[b1.id])
+                pos2 = np.array(solution.positions[b2.id])
+                distance = np.linalg.norm(pos1 - pos2)
+
+                # Calculate building radii (approximate as circles)
+                radius1 = np.sqrt(b1.footprint / np.pi)
+                radius2 = np.sqrt(b2.footprint / np.pi)
+                min_required_distance = radius1 + radius2 + self.min_distance_between_buildings
+
+                if distance < min_required_distance:
+                    # Penalty increases as buildings get closer
+                    violation = (min_required_distance - distance) / min_required_distance
+                    penalty += violation
+                    pair_count += 1
+
+        if pair_count == 0:
+            return 0.0
+
+        # Average penalty across all overlapping pairs
+        avg_penalty = penalty / pair_count
+        return float(np.clip(avg_penalty, 0.0, 1.0))
 
     def _compactness_score(self, solution: Solution) -> float:
         """

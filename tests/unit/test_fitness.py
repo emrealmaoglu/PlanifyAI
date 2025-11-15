@@ -175,3 +175,47 @@ class TestFitnessEvaluator:
         assert "cost" in solution.objectives
         assert "walking" in solution.objectives
         assert "adjacency" in solution.objectives
+
+    def test_overlap_penalty(self):
+        """Test that overlapping buildings receive penalty"""
+        buildings = [
+            Building("B1", BuildingType.RESIDENTIAL, 2000, 3),
+            Building("B2", BuildingType.EDUCATIONAL, 2000, 3),
+        ]
+        bounds = (0, 0, 1000, 1000)
+        evaluator = FitnessEvaluator(buildings, bounds)
+
+        # Overlapping positions
+        solution = Solution(
+            positions={
+                "B1": (100, 100),
+                "B2": (100, 100),  # Same position!
+            }
+        )
+
+        # Calculate overlap penalty
+        overlap_penalty = evaluator._calculate_overlap_penalty(solution)
+
+        # Should have penalty
+        assert (
+            overlap_penalty > 0.0
+        ), f"Overlapping buildings should have penalty > 0, got {overlap_penalty}"
+        assert overlap_penalty <= 1.0, f"Overlap penalty should be <= 1.0, got {overlap_penalty}"
+
+        # Evaluate fitness - should receive penalty
+        fitness_with_overlap = evaluator.evaluate(solution)
+
+        # Non-overlapping solution
+        solution_no_overlap = Solution(
+            positions={
+                "B1": (100, 100),
+                "B2": (300, 300),  # Far apart
+            }
+        )
+        fitness_no_overlap = evaluator.evaluate(solution_no_overlap)
+
+        # Overlapping solution should have lower fitness
+        assert fitness_with_overlap < fitness_no_overlap, (
+            f"Overlapping buildings should have lower fitness "
+            f"({fitness_with_overlap}) than non-overlapping ({fitness_no_overlap})"
+        )
