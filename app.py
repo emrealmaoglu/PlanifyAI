@@ -759,6 +759,21 @@ def main():
                     st.metric("Constraints", "❌ Violated")
                     st.error(f"Penalty: {constraint_penalty:.2%}")
 
+            # Road network statistics
+            if "road_stats" in result and result["road_stats"]:
+                st.subheader("🛣️ Road Network")
+                road_stats = result["road_stats"]
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Major Roads", road_stats.get("n_major_roads", 0))
+                with col2:
+                    st.metric("Minor Roads", road_stats.get("n_minor_roads", 0))
+                with col3:
+                    st.metric(
+                        "Total Length",
+                        f"{road_stats.get('total_length_m', 0):.0f}m",
+                    )
+
             # Objective breakdown with detailed cards
             st.subheader("🎯 Objective Scores")
             obj = result["objectives"]
@@ -769,7 +784,7 @@ def main():
                 cost_score = obj["cost"]
                 st.markdown(
                     f"""
-                <div style='background-color: #E3F2FD; padding: 20px; 
+                <div style='background-color: #E3F2FD; padding: 20px;
                     border-radius: 10px; border-left: 5px solid #1976D2;'>
                     <h4 style='margin: 0; color: #1976D2;'>💰 Construction Cost</h4>
                     <h2 style='margin: 10px 0; color: #1565C0;'>{cost_score:.1%}</h2>
@@ -786,7 +801,7 @@ def main():
                 walking_score = obj["walking"]
                 st.markdown(
                     f"""
-                <div style='background-color: #E8F5E9; padding: 20px; 
+                <div style='background-color: #E8F5E9; padding: 20px;
                     border-radius: 10px; border-left: 5px solid #388E3C;'>
                     <h4 style='margin: 0; color: #388E3C;'>🚶 Walking Distance</h4>
                     <h2 style='margin: 10px 0; color: #2E7D32;'>{walking_score:.1%}</h2>
@@ -803,7 +818,7 @@ def main():
                 adjacency_score = obj["adjacency"]
                 st.markdown(
                     f"""
-                <div style='background-color: #F3E5F5; padding: 20px; 
+                <div style='background-color: #F3E5F5; padding: 20px;
                     border-radius: 10px; border-left: 5px solid #7B1FA2;'>
                     <h4 style='margin: 0; color: #7B1FA2;'>🔗 Adjacency</h4>
                     <h2 style='margin: 10px 0; color: #6A1B9A;'>{adjacency_score:.1%}</h2>
@@ -848,7 +863,11 @@ def main():
                     campus_data=campus, buildings=buildings, show_boundary=show_boundary
                 )
                 folium_map = mapper.create_map(
-                    result["best_solution"], buildings=buildings, tiles=tile_style
+                    result["best_solution"],
+                    buildings=buildings,
+                    tiles=tile_style,
+                    major_roads=result.get("major_roads"),
+                    minor_roads=result.get("minor_roads"),
                 )
 
                 # Display map (full width)

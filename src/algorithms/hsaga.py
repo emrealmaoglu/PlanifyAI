@@ -469,6 +469,58 @@ class HybridSAGA(Optimizer):
                 ),
             }
 
+        # ========================================
+        # ROAD NETWORK GENERATION (Day 2)
+        # ========================================
+        print("🛣️  Generating road network...")
+        road_start = time.perf_counter()
+
+        # Get buildings with positions from best solution
+        buildings_with_positions = []
+        for building in self.buildings:
+            if building.id in best_solution.positions:
+                building_copy = Building(
+                    id=building.id,
+                    type=building.type,
+                    area=building.area,
+                    floors=building.floors,
+                    position=best_solution.positions[building.id],
+                    constraints=building.constraints.copy() if building.constraints else {},
+                )
+                buildings_with_positions.append(building_copy)
+
+        # Generate road network
+        major_roads = []
+        minor_roads = []
+        road_stats = {}
+
+        try:
+            from src.spatial.road_network import RoadNetworkConfig, RoadNetworkGenerator
+
+            road_config = RoadNetworkConfig(
+                n_major_roads=4,
+                major_road_max_length=500.0,
+                n_agents_per_building=2,
+                agent_max_steps=30,
+            )
+
+            road_generator = RoadNetworkGenerator(
+                bounds=self.bounds,
+                config=road_config,
+            )
+
+            major_roads, minor_roads = road_generator.generate(buildings_with_positions)
+            road_stats = road_generator.get_stats()
+
+            road_time = time.perf_counter() - road_start
+            print(f"✅ Road network generated in {road_time:.2f}s")
+            print(f"   Major roads: {road_stats.get('n_major_roads', 0)}")
+            print(f"   Minor roads: {road_stats.get('n_minor_roads', 0)}")
+            print(f"   Total length: {road_stats.get('total_length_m', 0):.0f}m")
+        except Exception as e:
+            logger.warning(f"Road generation failed: {e}")
+            road_time = 0.0
+
         # Prepare result dictionary
         result = {
             "best_solution": best_solution,
@@ -490,6 +542,9 @@ class HybridSAGA(Optimizer):
                 "ga_avg_history": self.stats.get("ga_avg_history", []),
             },
             "all_solutions": all_solutions,
+            "major_roads": major_roads,
+            "minor_roads": minor_roads,
+            "road_stats": road_stats,
         }
 
         return result

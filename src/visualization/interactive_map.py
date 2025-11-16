@@ -79,6 +79,8 @@ class InteractiveCampusMap:
         center: Optional[Tuple[float, float]] = None,
         zoom_start: int = 16,
         tiles: str = "OpenStreetMap",
+        major_roads: Optional[List[np.ndarray]] = None,
+        minor_roads: Optional[List[np.ndarray]] = None,
     ) -> folium.Map:
         """
         Create interactive Folium map with building placement.
@@ -132,6 +134,12 @@ class InteractiveCampusMap:
 
         # Add new buildings from solution
         self._add_solution_buildings(solution, building_dict)
+
+        # Add roads if provided
+        if major_roads is not None:
+            self._add_roads(major_roads, "major")
+        if minor_roads is not None:
+            self._add_roads(minor_roads, "minor")
 
         # Add legend
         self._add_legend()
@@ -256,7 +264,7 @@ class InteractiveCampusMap:
 
         html = f"""
         <div style="font-family: Arial, sans-serif; min-width: 200px;">
-            <h4 style="margin: 0 0 10px 0; 
+            <h4 style="margin: 0 0 10px 0;
                 color: {self.BUILDING_COLORS.get(building.type, '#757575')};">
                 {building.id}
             </h4>
@@ -380,6 +388,46 @@ class InteractiveCampusMap:
             BuildingType.DINING: "darkorange",
         }
         return color_map.get(building_type, "gray")
+
+    def _add_roads(self, roads: List[np.ndarray], road_type: str = "major") -> None:
+        """
+        Add roads to the map.
+
+        Args:
+            roads: List of road paths, each is (N, 2) array of [x, y] coordinates
+            road_type: 'major' or 'minor'
+        """
+        if road_type == "major":
+            color = "#E74C3C"  # Red
+            weight = 4
+            opacity = 0.9
+            popup_prefix = "Major Road"
+        else:  # minor
+            color = "#3498DB"  # Blue
+            weight = 2
+            opacity = 0.7
+            popup_prefix = "Minor Road"
+
+        for i, road in enumerate(roads):
+            if len(road) < 2:
+                continue
+
+            # Convert road coordinates to lat/lon
+            coords = []
+            for point in road:
+                x, y = point[0], point[1]
+                lat, lon = self._meters_to_latlon(x, y)
+                coords.append([lat, lon])
+
+            # Add polyline
+            folium.PolyLine(
+                locations=coords,
+                color=color,
+                weight=weight,
+                opacity=opacity,
+                popup=f"{popup_prefix} {i+1}",
+                tooltip=f"{popup_prefix} {i+1}",
+            ).add_to(self.map)
 
     def _meters_to_latlon(self, x: float, y: float) -> Tuple[float, float]:
         """
