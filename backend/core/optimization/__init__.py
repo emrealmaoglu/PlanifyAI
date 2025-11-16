@@ -23,3 +23,5 @@ __all__ = [
     "TurkishConstraintValidator",
     "ConstraintViolationSummary",
 ]
+
+__version__ = "0.1.0"  # Phase 1 complete!
