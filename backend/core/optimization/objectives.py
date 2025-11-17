@@ -434,17 +434,13 @@ class ObjectiveFunctions:
 
         # Score based on ratio (compared to 30% minimum)
         # Using sigmoid-like function: below 30% penalized, above 30% rewarded
-        ratio_score = min(
-            green_space_ratio / min_green_space_ratio, 1.0
-        )
+        ratio_score = min(green_space_ratio / min_green_space_ratio, 1.0)
 
         # Calculate per-capita green space
         if population_estimate is None:
             # Estimate: 1 person per 50 m² of building area
             # (Accounts for classrooms, offices, dorms, etc.)
-            population_estimate = max(
-                int(total_building_area / 50), 1
-            )
+            population_estimate = max(int(total_building_area / 50), 1)
 
         per_capita_green_space = green_space_area / population_estimate
 

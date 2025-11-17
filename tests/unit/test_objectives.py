@@ -5,7 +5,6 @@ Tests adjacency satisfaction and green space optimization objectives
 """
 
 import pytest
-import numpy as np
 from backend.core.optimization import ObjectiveFunctions
 
 

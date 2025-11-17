@@ -14,11 +14,8 @@ from backend.core.optimization import (
     ObjectiveFunctions,
     TurkishConstraintValidator,
 )
-from backend.core.turkish_standards import (
-    TurkishBuildingClassifier,
-    TurkishCostCalculator,
-    TurkishComplianceChecker,
-)
+# Note: Turkish standards are used implicitly through ObjectiveFunctions
+# and TurkishConstraintValidator
 
 
 class TestEndToEndOptimization:
