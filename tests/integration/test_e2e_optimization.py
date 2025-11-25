@@ -14,6 +14,7 @@ from backend.core.optimization import (
     ObjectiveFunctions,
     TurkishConstraintValidator,
 )
+
 # Note: Turkish standards are used implicitly through ObjectiveFunctions
 # and TurkishConstraintValidator
 
