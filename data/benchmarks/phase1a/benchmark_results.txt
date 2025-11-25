@@ -1,0 +1,62 @@
+============================================================
+Parallelization Benchmark
+============================================================
+
+Testing 20 buildings...
+==========================================================================================
+n_gen  |  n_eval  | n_nds  |     cv_min    |     cv_avg    |      eps      |   indicator  
+==========================================================================================
+     1 |       20 |      1 |  0.000000E+00 |  1.873866E+02 |             - |             -
+     2 |       40 |      1 |  0.000000E+00 |  9.899812E+01 |  0.000000E+00 |             f
+     3 |       60 |      2 |  0.000000E+00 |  5.868468E+01 |  1.0000000000 |         ideal
+     4 |       80 |      2 |  0.000000E+00 |  4.104034E+01 |  0.000000E+00 |             f
+     5 |      100 |      2 |  0.000000E+00 |  3.205933E+01 |  0.000000E+00 |             f
+==========================================================================================
+n_gen  |  n_eval  | n_nds  |     cv_min    |     cv_avg    |      eps      |   indicator  
+==========================================================================================
+     1 |       20 |      2 |  0.000000E+00 |  2.047079E+02 |             - |             -
+     2 |       40 |      2 |  0.000000E+00 |  1.014330E+02 |  0.000000E+00 |             f
+     3 |       60 |      2 |  0.000000E+00 |  7.226715E+01 |  0.000000E+00 |             f
+     4 |       80 |      3 |  0.000000E+00 |  3.807442E+01 |  0.1513923211 |         ideal
+     5 |      100 |      3 |  0.000000E+00 |  1.565174E+01 |  0.4140060744 |         ideal
+  Serial:   54.9s
+  Parallel: 43.5s
+  Speedup:  1.26x
+
+Testing 50 buildings...
+==========================================================================================
+n_gen  |  n_eval  | n_nds  |     cv_min    |     cv_avg    |      eps      |   indicator  
+==========================================================================================
+     1 |       20 |      1 |  9.162898E+01 |  4.893944E+02 |             - |             -
+     2 |       40 |      1 |  9.162898E+01 |  3.602634E+02 |             - |             -
+     3 |       60 |      1 |  7.229457E+01 |  2.875505E+02 |             - |             -
+     4 |       80 |      1 |  2.066291E+01 |  2.296694E+02 |             - |             -
+     5 |      100 |      1 |  2.066291E+01 |  2.044751E+02 |             - |             -
+  Failed: object of type 'NoneType' has no len()
+Traceback (most recent call last):
+  File "/Users/emrealmaoglu/Desktop/PlanifyAI/scripts/benchmark_parallel.py", line 36, in <module>
+    serial_time, _ = benchmark(n, use_parallel=False)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/emrealmaoglu/Desktop/PlanifyAI/scripts/benchmark_parallel.py", line 25, in benchmark
+    return elapsed, len(result.F)
+                    ^^^^^^^^^^^^^
+TypeError: object of type 'NoneType' has no len()
+
+Testing 100 buildings...
+==========================================================================================
+n_gen  |  n_eval  | n_nds  |     cv_min    |     cv_avg    |      eps      |   indicator  
+==========================================================================================
+     1 |       20 |      1 |  5.074911E+02 |  8.875220E+02 |             - |             -
+     2 |       40 |      1 |  2.991854E+02 |  7.021463E+02 |             - |             -
+     3 |       60 |      1 |  2.991854E+02 |  6.207521E+02 |             - |             -
+     4 |       80 |      1 |  2.991854E+02 |  5.842718E+02 |             - |             -
+     5 |      100 |      1 |  2.501782E+02 |  5.405109E+02 |             - |             -
+  Failed: object of type 'NoneType' has no len()
+Traceback (most recent call last):
+  File "/Users/emrealmaoglu/Desktop/PlanifyAI/scripts/benchmark_parallel.py", line 36, in <module>
+    try:
+         
+  File "/Users/emrealmaoglu/Desktop/PlanifyAI/scripts/benchmark_parallel.py", line 25, in benchmark
+    n_solutions = len(result.F) if result.F is not None else 0
+                    ^^^^^^^^^^^^^
+TypeError: object of type 'NoneType' has no len()
