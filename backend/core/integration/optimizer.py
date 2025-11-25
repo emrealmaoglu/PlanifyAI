@@ -14,8 +14,8 @@ class AdvancedOptimizer:
         self.use_parallel = use_parallel
         
         if use_parallel:
-            from .parallel import ParallelEvaluator
-            self.parallel_eval = ParallelEvaluator(problem)
+            from .parallel import SharedMemoryEvaluator
+            self.parallel_eval = SharedMemoryEvaluator(problem)
         
         # Generate reference directions
         self.ref_dirs = get_reference_directions(
@@ -29,11 +29,23 @@ class AdvancedOptimizer:
         else:
             self.problem.parallel_evaluator = None
 
-        algorithm = NSGA3(
-            ref_dirs=self.ref_dirs,
-            pop_size=self.pop_size,
-            eliminate_duplicates=True
-        )
+        # Use smart initialization if available
+        sampling = None
+        if hasattr(self.problem, 'get_initial_population'):
+            initial_pop = self.problem.get_initial_population(self.pop_size)
+            if initial_pop is not None:
+                sampling = initial_pop
+                
+        kwargs = {
+            "ref_dirs": self.ref_dirs,
+            "pop_size": self.pop_size,
+            "eliminate_duplicates": True
+        }
+        
+        if sampling is not None:
+            kwargs["sampling"] = sampling
+            
+        algorithm = NSGA3(**kwargs)
         
         algorithm.callback = self._refinement_callback
         
@@ -46,6 +58,10 @@ class AdvancedOptimizer:
     
     def _refinement_callback(self, algorithm):
         """H-SAGA local refinement every N generations."""
+        # Update adaptive constraints
+        if hasattr(self.problem, 'constraint_handler'):
+            self.problem.constraint_handler.update()
+
         if not self.use_hsaga:
             return
             
