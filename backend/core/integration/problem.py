@@ -24,7 +24,9 @@ class IntegratedCampusProblem(Problem):
         n_buildings: int = 50,
         objectives: list = None,
         enable_adaptive_roads: bool = True,
-        enable_turkish_standards: bool = True  # NEW
+        enable_turkish_standards: bool = True,
+        use_smart_init: bool = True,
+        use_adaptive_constraints: bool = True
     ):
         """
         Initialize problem.
@@ -36,12 +38,17 @@ class IntegratedCampusProblem(Problem):
             n_buildings: Number of buildings to place
             objectives: List of objective names to optimize
             enable_adaptive_roads: Whether to adapt roads to buildings
+            enable_turkish_standards: Enable Turkish Standards validation
+            use_smart_init: Use heuristic initialization
+            use_adaptive_constraints: Use epsilon-constraint handling
         """
         self.boundary = boundary
         self.n_grids = n_grids
         self.n_radials = n_radials
         self.n_buildings = n_buildings
         self.enable_adaptive_roads = enable_adaptive_roads
+        self.use_smart_init = use_smart_init
+        self.use_adaptive_constraints = use_adaptive_constraints
         
         if enable_adaptive_roads:
             from .adaptive_field import AdaptiveTensorFieldGenerator
@@ -56,6 +63,10 @@ class IntegratedCampusProblem(Problem):
             n_constr = 5  # green, density, spacing, boundary, road_overlap
         else:
             n_constr = 1
+            
+        if use_adaptive_constraints:
+            from .adaptive_constraints import AdaptiveConstraintHandler
+            self.constraint_handler = AdaptiveConstraintHandler()
         
         # Default objectives (MVP - simplified)
         if objectives is None:
@@ -141,7 +152,73 @@ class IntegratedCampusProblem(Problem):
             G[i] = self._calculate_constraints(buildings, roads)
         
         out["F"] = F
+        
+        # Apply adaptive penalty if enabled
+        if self.use_adaptive_constraints and hasattr(self, 'constraint_handler'):
+            for i in range(pop_size):
+                for j in range(self.n_constr):
+                    G[i, j] = self.constraint_handler.apply_penalty(G[i, j])
+                    
         out["G"] = G
+
+    def get_initial_population(self, pop_size=100):
+        """Generate smart initial population instead of random."""
+        if not self.use_smart_init:
+            return None
+            
+        from .initialization import SmartInitializer
+        
+        initializer = SmartInitializer(
+            self.boundary, 
+            self.n_buildings,
+            min_spacing=15.0
+        )
+        
+        X = []
+        
+        # 50% grid layouts
+        for _ in range(pop_size // 2):
+            positions, types, orientations = initializer.generate_grid_layout()
+            x = self._encode_individual(positions, types, orientations)
+            X.append(x)
+        
+        # 50% clustered layouts  
+        for _ in range(pop_size - (pop_size // 2)):
+            positions, types, orientations = initializer.generate_clustered_layout()
+            x = self._encode_individual(positions, types, orientations)
+            X.append(x)
+        
+        return np.array(X)
+
+    def _encode_individual(self, positions, types, orientations):
+        """Encode building layout to chromosome."""
+        # Generate random tensor field params
+        bounds = self.boundary.bounds
+        
+        grid_centers = np.random.uniform(
+            [bounds[0], bounds[1]],
+            [bounds[2], bounds[3]],
+            (self.n_grids, 2)
+        ).flatten()
+        grid_thetas = np.random.uniform(0, 2*np.pi, self.n_grids)
+        grid_decays = np.random.uniform(50, 300, self.n_grids)
+        
+        radial_centers = np.random.uniform(
+            [bounds[0], bounds[1]],
+            [bounds[2], bounds[3]],
+            (self.n_radials, 2)
+        ).flatten()
+        radial_decays = np.random.uniform(50, 200, self.n_radials)
+        
+        # Flatten building params
+        b_pos = positions.flatten()
+        
+        # Concatenate all
+        return np.concatenate([
+            grid_centers, grid_thetas, grid_decays,
+            radial_centers, radial_decays,
+            b_pos, types, orientations
+        ])
 
     def _decode_individual(self, x):
         from .composite_genotype import CompositeGenotype
@@ -183,7 +260,22 @@ class IntegratedCampusProblem(Problem):
 
     def _calculate_constraints(self, buildings, roads):
         if self.enable_turkish_standards:
-            _, details = self.standards_validator.calculate_constraint_violations(buildings, roads)
+            # Pass None for roads to skip slow overlap check in validator
+            _, details = self.standards_validator.calculate_constraint_violations(buildings, None)
+            
+            # Calculate road overlap using Spatial Index
+            if roads:
+                from .spatial_index import SpatialRoadIndex
+                road_index = SpatialRoadIndex(roads)
+                building_positions = np.array([b['position'] for b in buildings])
+                _, _, violation = road_index.query_nearest(
+                    building_positions,
+                    min_clearance=10.0
+                )
+                details['road_overlap'] = violation
+            else:
+                details['road_overlap'] = 0.0
+
             return np.array([details['green_space'], details['density'], 
                             details['spacing'], details['boundary'], details['road_overlap']])
         else:
