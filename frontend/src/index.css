@@ -1,0 +1,47 @@
+/* Mapbox CSS */
+@import 'mapbox-gl/dist/mapbox-gl.css';
+@import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
+@import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
+
+/* Tailwind CSS v4 */
+@import "tailwindcss";
+
+/* Building popup styling */
+.building-popup {
+  padding: 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.building-popup strong {
+  color: #1a1a1a;
+  font-size: 14px;
+}
+
+/* Mapbox overrides for dark theme compatibility */
+.mapboxgl-popup-content {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip {
+  border-top-color: rgba(255, 255, 255, 0.95);
+}
+
+/* Toast animation */
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out forwards;
+}

@@ -1,0 +1,468 @@
+
+
+A Technical Guide to Constraint Handling in Evolutionary Spatial Planning
+
+
+The Core Challenge: Unconstrained Algorithms for Constrained Problems
+
+Evolutionary Algorithms (EAs) are powerful population-based metaheuristics inspired by natural selection.1 They have proven successful in solving a wide variety of complex optimization problems.2 However, EAs are fundamentally unconstrained search techniques.2 This presents a significant challenge for real-world applications, particularly in spatial planning, where the problem is not just to find an optimal solution, but a feasible one.
+A spatial planning problem, like most engineering designs, is a Constrained Optimization Problem (COP). The general form of a COP is:
+Minimize:
+
+$$f(\vec{x})$$
+Subject to:
+
+$$g_i(\vec{x}) \le 0, \quad i = 1, \dots, m \quad \text{(inequality constraints)}$$
+$$h_j(\vec{x}) = 0, \quad j = 1, \dots, p \quad \text{(equality constraints)}$$
+where $\vec{x}$ is the vector of decision variables (e.g., building coordinates, types, pathway geometries), $f(\vec{x})$ is the objective function (e.g., cost, travel time), $g_i(\vec{x})$ are inequality constraints (e.g., setbacks, green space ratios), and $h_j(\vec{x})$ are equality constraints.2
+The core difficulty in spatial planning is that the constraints $g_i(\vec{x})$ and $h_j(\vec{x})$ are often highly non-linear, non-convex, and computationally expensive. They typically involve complex geometric calculations (e.g., non-overlap, distance checks, solar access). Without a robust Constraint Handling Technique (CHT), an EA is unusable, as its genetic operators (crossover and mutation) will constantly produce solutions that violate these hard constraints.4
+
+Taxonomy of Constraint Handling Techniques
+
+A CHT is the mechanism that integrates constraints into the EA's fitness function and selection process.2 The primary categories of CHTs, which will form the basis of this guide, are:
+Penalty Functions: Transforming the COP into an unconstrained problem by penalizing infeasible solutions in the fitness function.2
+Repair Mechanisms: Actively correcting an infeasible solution to make it feasible, often using problem-specific heuristics.6
+Feasibility-Based Selection: Separating the objective function and constraint violation, using a set of rules to compare solutions during the selection phase.2
+Special Representations/Operators: Designing the genetic encoding (chromosome) such that it is physically impossible to generate an infeasible solution.1 This is powerful but highly problem-specific and less general.
+Hybrid Methods: Combining multiple approaches, such as a feasibility-based selection with a repair mechanism.2
+The choice of method is non-trivial. It depends on the problem's topology, the ratio of the feasible search space to the infeasible space, and, critically, the computational cost of evaluating the constraints.9
+
+Penalty Function Methods: Formulations and Analysis
+
+
+The General Principle of Penalty Functions
+
+Penalty functions are the most common and historically oldest CHT.2 The core idea is to transform the constrained problem into an unconstrained one by adding a penalty term, $P(\vec{x})$, to the objective function, $f(\vec{x})$, creating a new, expanded fitness landscape for the EA to traverse.2
+For a minimization problem, the penalized fitness function, $\varphi(\vec{x})$, is:
+$$\varphi(\vec{x}) = f(\vec{x}) + P(\vec{x})$$
+The penalty $P(\vec{x})$ is zero if the solution $\vec{x}$ is feasible and has a positive value (proportional to its infeasibility) if it is not. A general formulation for the penalty term is:
+$$P(\vec{x}) = \sum_{i=1}^{m} r_i \cdot G_i(\vec{x}) + \sum_{j=1}^{p} c_j \cdot L_j(\vec{x})$$
+Where:
+$G_i(\vec{x}) = \max[0, g_i(\vec{x})]^{\beta}$ (for inequality constraints $g_i(\vec{x}) \le 0$)
+$L_j(\vec{x}) = |h_j(\vec{x})|^{\gamma}$ (for equality constraints $h_j(\vec{x}) = 0$)
+$r_i$ and $c_j$ are positive penalty coefficients.
+$\beta$ and $\gamma$ are exponents, typically set to 1 or 2.2
+This approach is an exterior penalty method, as it allows the search to begin with infeasible solutions and move toward the feasible region.2 The effectiveness of this entire category, however, depends entirely on how the penalty coefficients ($r_i, c_j$) are defined.
+
+The Death Penalty (Immediate Rejection)
+
+The death penalty is the simplest possible penalty function, where the penalty for any infeasible solution is infinite: $P(\vec{x}) = \infty$. This method simply rejects all infeasible individuals.9
+In practice, this is not implemented as a penalty value but as a modification to the evolutionary cycle. The population size is fixed, so if an infeasible offspring is generated, it must be discarded, and a new one must be created until a feasible replacement is found.13
+
+Kod snippet'i
+
+
+// Pseudocode logic for Death Penalty selectionnew_population =desired_pop_size = Nwhile (count(new_population) < desired_pop_size)  // Generate offspring  offspring = generate_offspring(parent_population)    // Apply death penalty  IF (is_feasible(offspring))    add offspring to new_population  ELSE    reject offspring // Do nothing  END IF    // If population stagnates, may need to loop indefinitelyEND WHILE
+This method is only viable if the feasible region is large, convex, and easy to find, or if a fully feasible initial population is provided.13 For complex spatial planning, this approach is strongly discouraged. It provides no gradient or path toward feasibility; it simply tells the search "no." A solution that is 99% optimal but has one minor building overlap is discarded, and all the valuable genetic information it contains (e.g., good road layout, green space placement) is lost.12 This "stalls" the search, trapping it in local optima from which it cannot escape by crossing an infeasible barrier.12
+
+Static Penalty Methods (Fixed Coefficients)
+
+This method uses fixed, constant penalty coefficients ($r_i, c_j$) for the entire duration of the evolutionary run. The challenge lies in finding the correct values for these coefficients before the search begins.9 This is known as the "parameter tuning problem," and it is the method's critical, and often fatal, flaw.9
+Analysis of this method reveals a "tuning trap":
+If penalty coefficients are "too large": The search space becomes dominated by high-penalty "walls." The algorithm is "equivalent to rejecting unfeasible solutions".9 It becomes a death penalty method, with all its associated drawbacks.
+If penalty coefficients are "too low": The algorithm "may converge to an unfeasible solution".9 This occurs because the benefit from a good objective function $f(\vec{x})$ is greater than the penalty $P(\vec{x})$ for violating a constraint, making the infeasible solution appear "fitter" than a feasible one.
+Finding the "Goldilocks" parameters that are high enough to force feasibility but low enough to guide the search to the feasible optimum is problem-dependent and requires significant, non-trivial manual effort.
+
+Dynamic Penalty Methods (Generation-Dependent)
+
+This method attempts to solve the tuning trap by making the penalty coefficients a function of the generation number, $t$.2 The penalty is typically low in early generations, allowing the EA to explore the search space (including infeasible regions), and increases over time, strengthening the pressure to find a feasible solution as the search progresses.5
+A well-known formulation by Joines & Houck (1994) is 5:
+$$\varphi(\vec{x}, t) = f(\vec{x}) + (C \cdot t)^{\alpha} \times \text{SVC}(\beta, \vec{x})$$
+Where:
+$\text{SVC}(\beta, \vec{x})$ is the Sum of Constraint Violation (equivalent to $P(\vec{x})$ with $\beta$-exponents).
+$t$ is the current generation number.
+$C$, $\alpha$, and $\beta$ are new user-defined constants (e.g., $C=0.5, \alpha=1 \text{ or } 2, \beta=1 \text{ or } 2$).5
+While this method requires fewer parameters than some static approaches and seems more intuitive, it does not fully solve the core problem. The algorithm's quality is still "very sensitive to changes in the values of the three parameters" ($C$, $\alpha$, $\beta$).9 Furthermore, the constantly increasing penalty "change[s] the objective function significantly," which can "trap" the population in a local optimum (feasible or infeasible) from which it can never escape.9
+
+Adaptive Penalty Methods (Feedback-Dependent)
+
+This is the most sophisticated and effective category of penalty functions.19 Instead of pre-defining the penalty or tying it to the generation count, the penalty coefficients are adjusted dynamically based on feedback from the search process itself.5
+A common and effective approach, proposed by Tessema & Yen (2009), uses the state of the population—specifically, the ratio of feasible individuals—as the feedback mechanism.21
+The adaptive logic works as follows:
+Early Stage (Few Feasible Solutions): If the population is mostly infeasible, the penalty is kept low. The algorithm's goal is to "exploit infeasible individuals with low objective value and low constraint violation".21 This allows the search to find and follow paths to the feasible region, using good-but-infeasible solutions as "stepping stones."
+Late Stage (Many Feasible Solutions): Once the population has found the feasible region (i.e., the feasible-to-infeasible ratio is high), the penalty on any remaining infeasible solutions increases dramatically. This guides the search toward the optimum solution within the feasible space.22
+This method is generally "simple to implement and does not need any parameter tuning" 21, as the feedback loop is self-regulating. It effectively balances the need for exploration (finding feasibility) with exploitation (finding the optimum).
+
+Comparative Analysis of Penalty Function Methods
+
+The evolution of these four methods demonstrates a clear progression, with each new approach solving a flaw in the previous one. Their trade-offs are summarized in Table 1.
+Table 1: Comparative Analysis of Penalty Function Methods
+
+Method
+Mechanism
+Key Parameter(s)
+Performance Pros
+Performance Cons
+Death Penalty
+Rejects all infeasible solutions ($P=\infty$).
+None.
+Simple. Guarantees feasibility.
+Inefficient. Loses information. Fails if feasible region is sparse or disconnected.[12, 13]
+Static Penalty
+Fixed penalty coefficients ($r_i, c_j$).
+$r_i, c_j, \beta, \gamma$.
+Simple to implement.
+Performance is critically dependent on parameter tuning. Fails if parameters are "too high" or "too low".9
+Dynamic Penalty
+Penalty increases with generation $t$.
+$C, \alpha, \beta$.
+Better than static; allows early exploration.
+Still sensitive to parameters.9 Can "warp" the landscape and trap the search.9
+Adaptive Penalty
+Penalty based on population feedback (e.g., feasible ratio).
+(Ideally) None.
+Robust, parameter-light.[21] Balances exploration (finding feasibility) and exploitation (finding optimum).22
+More complex to implement the feedback loop.
+
+Repair Mechanisms: Correcting Infeasible Solutions
+
+
+The Principle of Repair Mechanisms
+
+This section explores an entirely different philosophy: instead of penalizing infeasible solutions, the algorithm repairs them.6 When crossover or mutation produces an infeasible offspring, a repair operator is applied to transform it into a feasible (or at least more feasible) solution before it is evaluated or placed into the new population.7
+This approach is a form of Lamarckian evolution, where a trait "learned" during an individual's lifetime (the repair) is inherited by its offspring. This can be computationally expensive, as the repair routine itself adds an extra cost. However, it avoids the complex landscape-modification problems of penalty functions.6 The main drawback is that repair operators are often "heavily problem specific" and must be "explicitly tailored" to the constraints of the domain.23 For a domain like spatial planning, this specificity is actually a significant advantage.
+
+Projection onto the Feasible Space
+
+This is a generic, mathematical approach to repair. An infeasible solution $\vec{x}'$ is mapped to the nearest feasible solution $\vec{x}$ in the feasible region $F$.24 This is defined as:
+$$\vec{x} = \text{proj}_F(\vec{x}') = \arg \min_{\vec{y} \in F} ||\vec{x}' - \vec{y}||$$
+This method sounds appealing but is often intractable in practice. The literature on projection methods largely focuses on projection onto convex sets, such as hyperplanes, half-spaces, or simple convex subsets.25
+The feasible region in spatial planning is defined by geometric-interaction constraints (like non-overlap), which are intensely non-convex. For such problems, the projection operation itself is a difficult, non-convex optimization problem.28 This method is therefore unsuitable for all but the simplest spatial constraints (e.g., repairing a building's center point that is outside the plot boundary).
+
+Local Search-Based Repair
+
+This method, a core component of Memetic Algorithms, treats the infeasible solution as a starting point for a local search whose objective is to minimize the total constraint violation $\text{CV}(\vec{x})$.29
+The algorithm actively "walks" the solution toward the feasible boundary by iteratively accepting neighboring solutions that are "less infeasible." Its computational cost is high but controllable via a fixed iteration budget.
+
+Kod snippet'i
+
+
+Function Repair_LocalSearch(individual x_inf)  x_curr = x_inf  iter = 0  MAX_REPAIR_ITER = 50 // Define a computational budget    // Continue as long as solution is infeasible and budget remains  while (CV(x_curr) > 0 AND iter < MAX_REPAIR_ITER)        // Find a neighbor with a *better* constraint violation    best_neighbor = NULL    min_CV = CV(x_curr)        FOR neighbor in Generate_Neighborhood(x_curr)      IF CV(neighbor) < min_CV        min_CV = CV(neighbor)        best_neighbor = neighbor      END IF    END FOR        IF best_neighbor!= NULL      x_curr = best_neighbor // Move to the less-infeasible neighbor    ELSE      // Stuck in local minimum of constraint violation, repair fails      BREAK    END IF    iter = iter + 1  END WHILE    RETURN x_curr // May still be infeasible if repair failsEnd Function
+
+Problem-Specific Heuristics for Spatial Planning
+
+This is the most practical and powerful repair method for this domain. We design a "smart" repair operator that understands why a solution is infeasible and applies a domain-specific heuristic to fix it.32
+For spatial planning, an infeasible solution is typically a spatial conflict (e.g., buildings overlapping, setbacks violated). A multi-stage heuristic repair framework provides a robust solution 34:
+Stage 1: Selection: If the problem is one of excessive density (too many buildings), the repair operator first thins the buildings by, for example, removing the smallest or most-conflicted building.
+Stage 2: Displacement: This is the key. A problem-specific local search, such as the Building Displacement based on Grouping and Simulated Annealing (BDGSA), is used to move buildings to resolve conflicts.34 This is more intelligent than a blind local search, as it can be programmed to move buildings away from each other or toward the nearest valid position.
+Stage 3: Aggregation: If conflicts remain (e.g., minor overlaps or buildings that are too close), the repair operator merges the two conflicting buildings into a single, larger building. This immediately resolves the geometric constraint violation.34
+This type of heuristic, "greedy" repair does not guarantee that the repaired solution is optimal, but it can very efficiently move the population into the feasible region, which is often the hardest part of the search.
+
+Feasibility-Based Selection Strategies
+
+
+The Principle of Feasibility-Based Selection
+
+This section explores a modern and highly effective class of CHTs that "separate constraints and objectives".2 Instead of combining $f(\vec{x})$ and $\text{CV}(\vec{x})$ into a single, penalized fitness value, these methods modify the selection operator (typically tournament selection) to handle $f(\vec{x})$ and $\text{CV}(\vec{x})$ as two separate measures.35 This approach generally avoids the need for penalty parameter tuning.
+
+Deb's Feasibility Rules (Constraint-Domination Principle)
+
+The most popular and foundational method in this category was proposed by Deb (2000).2 It defines a simple set of rules for comparing any two solutions, $\vec{x}_i$ and $\vec{x}_j$, during a selection tournament.
+These rules, known as the Constraint-Domination Principle (CDP), are as follows 37:
+Solution $\vec{x}_i$ is said to constraint-dominate solution $\vec{x}_j$ if:
+$\vec{x}_i$ is feasible and $\vec{x}_j$ is infeasible.
+Both $\vec{x}_i$ and $\vec{x}_j$ are infeasible, but $\vec{x}_i$ has a smaller constraint violation ($\text{CV}(\vec{x}_i) < \text{CV}(\vec{x}_j)$).
+Both $\vec{x}_i$ and $\vec{x}_j$ are feasible, and $\vec{x}_i$ dominates $\vec{x}_j$ in the objective space ($f(\vec{x}_i) < f(\vec{x}_j)$ for minimization).
+This creates a clear, lexicographical priority: feasibility first, then constraint violation, and only then, objective value. This simple, parameter-free logic is the default CHT in many modern EAs, including the popular NSGA-II.39
+
+Kod snippet'i
+
+
+// Returns the "winner" of a tournament between x_i and x_jFunction Debs_Compare(individual x_i, individual x_j)  cv_i = CV(x_i)  cv_j = CV(x_j)    IF (cv_i == 0 AND cv_j == 0) // Rule 3: Both feasible    IF (f(x_i) < f(x_j))       RETURN x_i    ELSE       RETURN x_j    END IF    ELSE IF (cv_i == 0 AND cv_j > 0) // Rule 1: i feasible, j not    RETURN x_i    ELSE IF (cv_i > 0 AND cv_j == 0) // Rule 1: j feasible, i not    RETURN x_j      ELSE // Rule 2: Both infeasible    IF (cv_i < cv_j) // Compare by constraint violation      RETURN x_i     ELSE       RETURN x_j    END IF  END IFEnd Function
+
+Stochastic Ranking (Runarsson & Yao, 2000)
+
+Stochastic Ranking (SR) was developed to address a potential weakness in Deb's strict rules.41 The problem with Deb's Rule 1 is its absolute nature: a feasible solution with a terrible objective $f(\vec{x})$ will always be selected over an infeasible solution with a fantastic $f(\vec{x})$, even if the latter is only slightly infeasible. This can stall the search if the feasible region is hard to find or if the global optimum lies on the boundary.
+SR "stochastically" balances the objective and penalty functions.41 It introduces a probability, $P_f$ (typically between 0.4 and 0.5), that allows the objective function to be compared even if one solution is infeasible.2
+The tournament-selection logic for SR is as follows 44:
+When comparing $\vec{x}_i$ and $\vec{x}_j$, if both are feasible, compare them based on their objective function $f(\vec{x})$ (like Deb's Rule 3).
+If one or both are infeasible, generate a random number $u \in $.
+If $u < P_f$: compare $\vec{x}_i$ and $\vec{x}_j$ only based on their objective function $f(\vec{x})$, ignoring their constraint violation.
+If $u \ge P_f$: compare $\vec{x}_i$ and $\vec{x}_j$ only based on their constraint violation $\text{CV}(\vec{x})$ (like Deb's Rule 2).
+This probabilistic approach allows "good" (low $f(\vec{x})$) but slightly infeasible solutions to survive and guide the search, significantly improving performance on problems with complex feasible boundaries.41
+
+The $\epsilon$-Constrained Method (Takahama & Sakai, 2006)
+
+This is an "algorithm transformation method" that dynamically relaxes the very definition of "feasible".45 It introduces an "epsilon" ($\epsilon$) threshold for constraint violation. A solution $\vec{x}_i$ is considered "$\epsilon$-feasible" if $\text{CV}(\vec{x}_i) \le \epsilon$.
+The $\epsilon$ value is not static; it is annealed over the course of the run. It starts at a high value, $\epsilon_0$, (allowing many solutions to be considered "feasible") and gradually decreases to 0 by the final generation.47 A common schedule is $\epsilon(t) = \epsilon_0 \cdot (1 - t/T_{\max})^k$, where $t$ is the generation and $T_{\max}$ is the max generation.
+The comparison logic is a modification of Deb's rules:
+If both $\vec{x}_i$ and $\vec{x}_j$ are $\epsilon$-feasible ($\text{CV} \le \epsilon(t)$), the one with the better $f(\vec{x})$ wins.
+If $\vec{x}_i$ is $\epsilon$-feasible and $\vec{x}_j$ is not, $\vec{x}_i$ wins.
+If both are not $\epsilon$-feasible, the one with the better (lower) $\text{CV}(\vec{x})$ wins.
+This method is exceptionally valuable for spatial planning. As noted in 48, it is "especially useful for equality constraints which are difficult to satisfy." In spatial planning, this applies to "near-miss" geometry. An EA could spend thousands of generations trying to move a building from a 5.99m separation to 6.00m. The $\epsilon$-method allows the algorithm to "accept" the 5.99m solution in early generations, focusing instead on the objective (e.g., cost), and only forces strict, 6.00m+ feasibility at the very end when $\epsilon$ approaches 0. This effectively smooths the rugged constraint landscape.
+
+Comparative Analysis of Feasibility-Based Selection Rules
+
+These three selection methods represent the state-of-the-art in CHTs. The choice between them depends on the problem's nature and the implementer's preference for simplicity versus search-space "smoothing."
+Table 2: Comparison of Feasibility-Based Selection Rules
+
+Method
+Core Principle
+Key Parameter(s)
+Strength
+Weakness
+Deb's Rules (CDP)
+Strict Feasibility: Feasible > Infeasible > Less Infeasible > Better Objective.
+None.
+Simple, parameter-free, robust, highly effective.37
+Can be too strict; may stall if "good" infeasible solutions are always killed by "bad" feasible ones.
+Stochastic Ranking
+Probabilistic comparison: Sometimes compare by objective, sometimes by constraint.
+$P_f$ (e.g., 0.45).2
+Balances pressure for feasibility and objective. Finds "good" infeasible solutions near boundary.41
+Requires $P_f$ parameter tuning. Ranking method is more complex than simple tournament.
+$\epsilon$-Constrained
+Dynamic Relaxation: "Feasible" means $\text{CV} \le \epsilon$. $\epsilon$ decreases over time.
+$\epsilon(t)$ schedule.48
+Excellent for "near-miss" or equality constraints. Smooths landscape, allows focus on objective.[45, 48]
+Requires tuning the $\epsilon$-schedule, which is a new dynamic parameter.
+
+Multi-Objective Constraint Handling Approaches
+
+
+The Challenge of Constrained MOOPs (CMOPs)
+
+Spatial planning is often a multi-objective optimization problem (MOOP). For example, a planner must minimize cost ($f_1$) and maximize green space ($f_2$) simultaneously. When hard constraints are added, this becomes a Constrained MOOP (CMOP).
+Research on CHTs for MOOPs has received "much less attention" than for single-objective problems.49 This is largely because most single-objective CHTs can be "modified" for MOOPs.49 The core challenge is that the algorithm must now balance three competing pressures:
+Convergence: Pushing the population toward the true Pareto-optimal front.
+Diversity: Spreading the population out along the entire front.
+Feasibility: Satisfying all constraints.39
+
+Method 1: Constraint Violation as an Additional Objective
+
+This is an elegant "separation" technique.2 A $M$-objective constrained problem is transformed into an $M+1$-objective unconstrained problem.51
+The problem formulation becomes:
+Minimize:
+
+$$F(\vec{x}) = (f_1(\vec{x}), f_2(\vec{x}), \dots, f_M(\vec{x}), \text{CV}(\vec{x}))$$
+Where $\text{CV}(\vec{x})$ is the total normalized constraint violation, now treated as a new objective to be minimized. A standard MOEA (like NSGA-II) can then be used to find the full Pareto-optimal front for this $M+1$ dimensional space.
+This is a powerful technique, as it allows the decision-maker to see the trade-off between the original objectives and feasibility. For example, it might reveal that by accepting a 2% constraint violation, the building cost can be reduced by 30%. It also allows the algorithm to use "good" infeasible solutions as stepping stones.54
+A key drawback is that the EA may spend most of its effort finding the trade-off front for infeasible solutions. A two-phase methodology can solve this 52:
+Phase 1: Disregard the original objectives $f(\vec{x})$ entirely. Run a single-objective EA to minimize only $\text{CV}(\vec{x})$. Stop as soon as one feasible solution ($\text{CV}(\vec{x}) = 0$) is found.
+Phase 2: Switch to the $M+1$ objective optimization, using the feasible solution from Phase 1 to seed the initial population.
+
+Method 2: Constraint-Domination Principle in NSGA-III
+
+This method modifies the dominance principle of the MOEA to incorporate constraints. The Non-dominated Sorting Genetic Algorithm III (NSGA-III) is a powerful many-objective algorithm that uses reference points to maintain diversity.55
+When applied to constrained problems, both NSGA-II and NSGA-III use the Constraint-Domination Principle (CDP), which is identical to the Deb's Feasibility Rules discussed in Section IV.B.37
+The tournament selection logic for a constrained MOEA (like NSGA-II or NSGA-III) is modified as follows 37:
+When comparing $\vec{x}_i$ and $\vec{x}_j$, use Deb's Rules 1 and 2:
+If one is feasible and one is not, the feasible solution wins.
+If both are infeasible, the one with the lower $\text{CV}(\vec{x})$ wins.
+If both solutions are feasible (Deb's Rule 3), the standard non-domination check is applied:
+If $\vec{x}_i$ Pareto-dominates $\vec{x}_j$, $\vec{x}_i$ wins.
+If $\vec{x}_j$ Pareto-dominates $\vec{x}_i$, $\vec{x}_j$ wins.
+If they are mutually non-dominating, a diversity-preservation metric is used to break the tie (in NSGA-II, this is crowding distance; in NSGA-III, it is reference-line distance).
+A critical consideration is the distinction between NSGA-II and NSGA-III. NSGA-III is not a universally better algorithm; it was specifically designed to solve problems with many objectives (e.g., 4-10+).56 For typical spatial planning problems with 2 or 3 objectives (e.g., Min Cost, Max Green Space), literature suggests NSGA-II often outperforms NSGA-III.56 Therefore, for most spatial planning CMOPs, NSGA-II with the Constraint-Domination Principle is the recommended algorithm.
+
+Modeling Problem-Specific Hard Constraints in Spatial Planning
+
+
+The Feasibility Check Function: $g(\vec{x}) \le 0$
+
+To implement any CHT, we must first translate the problem's hard constraints into precise mathematical functions $g_j(\vec{x}) \le 0$. A solution $\vec{x}$ is feasible if and only if $g_j(\vec{x}) \le 0$ for all constraints $j$. The total constraint violation, $\text{CV}(\vec{x})$, is the sum of all violations:
+$$\text{CV}(\vec{x}) = \sum_{j} \max(0, g_j(\vec{x}))$$
+The following sections model the specific Turkish spatial planning constraints.
+
+Constraint 1: Turkish Seismic Constraints (Building Separation)
+
+Requirement: A minimum building separation of $\ge 6m$ for seismic safety.
+Legal Analysis: The primary regulation governing this is the Turkish "Planned Areas Zoning Regulation" (Planlı Alanlar İmar Yönetmeliği).59 While the high-level Turkish Seismic Code sets the principles 61, the zoning regulation provides the exact implementation. Article 23 of this regulation states: "Yan bahçe mesafesi" (Side setback distance) is "en az 3.00 metredir" (at least 3.00 meters).64
+Synthesis: The 6m separation requirement is not a single setback. It is the consequence of two adjacent plots, each respecting its mandatory 3.0m side setback. The gap between two buildings on adjacent plots is therefore $3.0\text{m} + 3.0\text{m} = 6.0\text{m}$.
+Mathematical Formulation: Let $B$ be the set of $N$ buildings, and $b_i$ be the geometry of building $i$. The minimum distance between any two buildings $b_i$ and $b_j$ must be at least 6.0m.
+Pairwise violation: $g_{\text{sep}}(b_i, b_j) = 6.0 - \text{dist}_{\min}(b_i, b_j)$
+Overall constraint for solution $\vec{x}$:$$g_{\text{seismic}}(\vec{x}) = \max_{b_i, b_j \in B, i \ne j} \left( 6.0 - \text{dist}_{\min}(b_i, b_j) \right) \le 0$$
+This is a computationally expensive $O(N^2)$ check and will be the bottleneck.
+
+Constraint 2: Accessibility Requirements (Pathway Width)
+
+Requirement: Pathway width $\ge 1.5m$.
+Legal Analysis: This is an explicit standard. TSI (Turkish Standards Institute) 12,576 mandates a minimum footpath width of 1.5m.66 This is corroborated by other planning guides, which list "Free width larger than 1.5 m" as a high-quality accessibility attribute.67
+Mathematical Formulation: Let $P$ be the set of $M$ pathway segments in the plan.
+Individual violation: $g_{\text{width}}(p_i) = 1.5 - \text{width}(p_i)$
+Overall constraint for solution $\vec{x}$:$$g_{\text{access}}(\vec{x}) = \max_{p_i \in P} \left( 1.5 - \text{width}(p_i) \right) \le 0$$
+
+Constraint 3: Green Space Ratio
+
+Requirement: Green space $\ge 30\%$ of the total plot.
+Legal Analysis: This requirement presents a point of ambiguity. The actual Turkish zoning law (Law No. 3194) specifies green space not as a ratio, but as a per-capita standard, typically 10 m² of active green space per capita.68 However, the user's 30% requirement is a very common zoning paradigm. Furthermore, 30% aligns with Türkiye's national goal to increase protected areas to 30% by 2030, making it a relevant target.72
+Resolution: We will model the constraint as specified (30% per plot), as this is a standard and well-defined constraint type.
+Mathematical Formulation: Let $A_{\text{total}}$ be the total plot area and $A_{\text{green}}(\vec{x})$ be the total green area in solution $\vec{x}$.
+Overall constraint for solution $\vec{x}$:$$g_{\text{green}}(\vec{x}) = 0.30 - \left( \frac{A_{\text{green}}(\vec{x})}{A_{\text{total}}} \right) \le 0$$
+
+Master Feasibility Check and Constraint Summary
+
+The Check_Feasibility function will combine these three constraints. Table 3 provides the "Rosetta Stone" for translating these rules into code.
+
+Kod snippet'i
+
+
+Function Check_Feasibility(solution x)  // 1. Check Green Space (Cheap O(1) check)  g_green = 0.30 - (x.green_area / x.total_area)    // 2. Check Accessibility (Moderate O(M) check)  g_access = -infinity  FOR p in x.pathways    g_access = max(g_access, 1.5 - p.width)  END FOR    // 3. Check Seismic Separation (Expensive O(N^2) check)  g_seismic = -infinity  FOR i = 1 to N-1    FOR j = i+1 to N      dist = min_distance(x.buildings[i], x.buildings[j])      g_seismic = max(g_seismic, 6.0 - dist)    END FOR  END FOR    // Calculate total constraint violation  cv_green = max(0, g_green)  cv_access = max(0, g_access)  cv_seismic = max(0, g_seismic)    total_CV = cv_green + cv_access + cv_seismic    RETURN total_CVEnd Function
+Table 3: Summary of Problem-Specific Spatial Constraints
+
+Constraint
+Source / Requirement
+Constraint Type
+Mathematical Formulation (g(x)≤0)
+Seismic Separation
+User (6m) & Planlı Alanlar İmar Yönetmeliği (3m+3m) [65]
+Geometric (Pairwise)
+$g_{\text{seismic}} = 6.0 - \min_{i \ne j} (\text{dist}(b_i, b_j))$
+Accessibility
+TSI 12,576 66
+Geometric (Attribute)
+$g_{\text{access}} = 1.5 - \min_{i} (\text{width}(p_i))$
+Green Space
+User (30%) & National Goal 72
+Ratio (Linear)
+$g_{\text{green}} = 0.30 - (A_{\text{green}} / A_{\text{total}})$
+
+Strategies for Computationally Efficient Constraint Handling
+
+
+The Problem of "Expensive" Constraints
+
+In many benchmark problems, $f(\vec{x})$ is expensive and $g(\vec{x})$ is cheap. In spatial planning, the reverse is often true. Calculating the objective $f(\vec{x})$ (e.g., total building material cost) is a simple $O(N)$ sum. Calculating the constraint violation $\text{CV}(\vec{x})$ involves the $O(N^2)$ $g_{\text{seismic}}$ check, which is the computational bottleneck.49 Therefore, minimizing the number of constraint evaluations is the key to computational efficiency.73
+
+Strategy 1: Constraint Evaluation Ordering (Cheap First)
+
+This is a fundamental optimization that must be implemented. The Check_Feasibility pseudocode in Section VI.E is naive; it calculates all three violations. A "cheap first" or "hierarchical" evaluation strategy enables early rejection and saves immense computation.74
+The constraints must be ordered from least-to-most expensive in the master function.
+Optimized Check_Feasibility Pseudocode:
+
+Kod snippet'i
+
+
+Function Check_Feasibility_Optimized(solution x)  total_CV = 0    // 1. Check Green Space (O(1) check)  g_green = 0.30 - (x.green_area / x.total_area)  IF (g_green > 0)    total_CV += g_green    // EARLY REJECTION: Do not run expensive checks if a cheap one fails    RETURN total_CV   END IF    // 2. Check Accessibility (O(M) check)  g_access = max(g_width(p) for p in x.pathways)  IF (g_access > 0)    total_CV += g_access    // EARLY REJECTION: Do not run the O(N^2) check    RETURN total_CV  END IF    // 3. Check Seismic Separation (O(N^2) check)  // This code only runs if the solution is 99% feasible  g_seismic = max(g_sep(b_i, b_j) for b_i, b_J in x.buildings)  IF (g_seismic > 0)    total_CV += g_seismic  END IF    RETURN total_CV // Will be 0 if all tests passedEnd Function
+This multi-stage evaluation within the fitness function 50 ensures that the $O(N^2)$ check is only performed on solutions that have already passed the cheap $O(1)$ and $O(M)$ checks, saving the vast majority of computational time.
+
+Strategy 2: Feasibility Probability Estimation (Surrogate-Assisted EA)
+
+For extremely high-fidelity models, even the $g_{\text{seismic}}$ check might be intractably slow (e.g., requiring a complex physics simulation). In this case, a Feasibility Predictor Model (FPM)—a type of surrogate model—is the state-of-the-art solution.12
+This approach, known as a Feasibility-Guided Evolutionary Algorithm (FGEA), uses a machine learning classifier to predict feasibility before running the true, expensive check.77
+Data Generation (Generation 0): Generate a large set (e.g., 1000-5000) of random solutions. Run the expensive Check_Feasibility_Optimized on all of them. This creates a labeled dataset: (x_i, is_feasible_i).
+Model Training: Train a fast machine-learning classifier (e.g., Random Forest, XGBoost, Decision Tree 77) on this dataset. This classifier is the FPM.
+Evolutionary Loop: For each new offspring $\vec{x}_{\text{new}}$:
+Feed $\vec{x}_{\text{new}}$ to the fast FPM: prediction = FPM.predict(x_{\text{new}}).
+If prediction == INFEASIBLE: Assign a high penalty or $\text{CV}(\vec{x}) = 1$. Do not run the expensive check.
+If prediction == FEASIBLE: Run the true, expensive Check_Feasibility_Optimized(x_{\text{new}}) function to get the real $\text{CV}(\vec{x})$ and $f(\vec{x})$.
+The results of this true evaluation are then added back to the training set to periodically re-train and improve the FPM.
+This surrogate-assisted approach "pre-filters" the solutions, significantly reducing the number of expensive evaluations. Studies have shown this can reduce the required function evaluations by 50% or more, making intractable problems solvable.77
+
+Recommendations for Spatial Planning Optimization
+
+
+Synthesizing a Final Strategy
+
+The analysis has shown that there is "no one best optimization algorithm".79 The most successful approaches for complex, real-world problems are almost always hybrids that combine the strengths of different techniques.2 A "one-size-fits-all" CHT (like only using a static penalty) will fail.
+A successful strategy for spatial planning must be a hybrid that is aware of the problem's geometric nature and its computational cost.
+
+A Recommended Hybrid CHT for Spatial Planning
+
+Based on the evidence, a robust, general-purpose strategy for spatial planning would be a layered hybrid:
+Layer 1 (Baseline Selection): Use Deb's Feasibility Rules (Constraint-Domination) as the primary CHT.37 It is parameter-free, simple to implement, and highly robust.2 If the problem is multi-objective (e.g., Min Cost, Max Green Space), use NSGA-II with this selection rule.37
+Layer 2 (Problem-Specific Repair): After the mutation operator creates an offspring, apply a problem-specific repair heuristic.80 This operator should be designed to fix the most common geometric infeasibilities (e.g., overlaps, setback violations). A displacement and aggregation logic, as described in Section III.D, is ideal.34 This Lamarckian step 81 uses domain knowledge to dramatically speed up the search for feasible solutions.
+Layer 3 (Efficiency): Implement hierarchical constraint evaluation ("cheap first") with early rejection, as detailed in Section VII.B.74 This is a mandatory, non-negotiable optimization to manage the high cost of geometric checks.
+
+Final Guidance: Choosing the Right Strategy
+
+The best strategy depends on the specific context of the optimization, from rapid prototyping to high-fidelity simulation. Table 4 provides a "decision tree" to guide the selection of the best CHT cocktail for a given spatial planning problem.
+Table 4: Recommended CHT Strategies for Spatial Planning
+
+Scenario / Problem Context
+Recommended CHT
+Rationale & Key Sources
+1. Rapid Prototyping (Simple $f(\vec{x})$, Simple $g(\vec{x})$)
+Deb's Feasibility Rules (CDP)
+Simplest, parameter-free, robust baseline. Fast to implement and effective for initial tests.[2, 37]
+2. Moderate Complexity (Many geometric constraints, $g(\vec{x})$ is the bottleneck)
+** + + [Hierarchical Checking]**
+The repair heuristic [6, 34] actively fixes geometric errors, which Deb's rules cannot. Hierarchical checking 74 is essential to manage the $O(N^2)$ constraint cost.
+3. Complex / "Near-Feasible" (e.g., equality constraints, very tight tolerances like 6.0m)
+[$\epsilon$-Constrained Method] + + [Hierarchical Checking]
+The $\epsilon$-method [45, 48] is superior for "near-miss" problems. It smooths the constraint boundary, allowing the EA to focus on the objective until the final generations.
+4. High-Fidelity / Expensive (e.g., $g(\vec{x})$ involves simulation, >1 sec/eval)
+** + + [Feasibility Predictor Model (FPM)]**
+When the true $g(\vec{x})$ is intractably slow, a surrogate FPM 77 is the only viable path. It pre-filters infeasible solutions to save 50%+ of calls to the expensive checker.77
+Alıntılanan çalışmalar
+A Survey of Constraint Handling Techniques used with Evolutionary Algorithms 1 Introduction, erişim tarihi Kasım 3, 2025, https://web.ist.utl.pt/adriano.simoes/tese/referencias/Papers%20-%20Antonio/GAConstraints.pdf
+Constraint-Handling Techniques used with Evolutionary Algorithms - Department of Computer Science, erişim tarihi Kasım 3, 2025, https://www2.cs.uh.edu/~ceick/6367/Coello_CHNOPT.pdf
+Constraint-Handling Techniques used with Evolutionary Algorithms - CMAP, erişim tarihi Kasım 3, 2025, http://www.cmap.polytechnique.fr/~nikolaus.hansen/proceedings/2017/GECCO/companion/companion_files/tut115s1-file1.pdf
+How to Handle Constraints with Evolutionary Algorithms B.G.W. craenen A.E. Eiben E. Marchiori Abstract In this paper we describe, erişim tarihi Kasım 3, 2025, http://www.cs.ru.nl/~elenam/cspga.pdf
+Constraint-Handling Techniques used with Evolutionary Algorithms - Department of Computer Science, erişim tarihi Kasım 3, 2025, https://www.cs.york.ac.uk/rts/docs/GECCO_2005/Workshop%20and%20tutorials/gecco05/papers/3.pdf
+A Population-Based Local Search Algorithm for the Identifying Code Problem - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2227-7390/11/20/4361
+Improving EA-based Design Space Exploration by Utilizing Symbolic Feasibility Tests - Department of Computer Science, erişim tarihi Kasım 3, 2025, https://www.cs.york.ac.uk/rts/docs/GECCO_2005/Conference%20proceedings/docs/p1945.pdf
+A Multiobjective Optimization-Based Evolutionary Algorithm for Constrained Optimization, erişim tarihi Kasım 3, 2025, https://faculty.csu.edu.cn/_tsf/00/65/R3UbeyYr63ua.pdf
+A Survey of Constraint Handling Techniques in Evolutionary ..., erişim tarihi Kasım 3, 2025, https://cs.adelaide.edu.au/users/zbyszek/Papers/p17.pdf
+Death penalty — PyGMO 1.1.7dev documentation, erişim tarihi Kasım 3, 2025, https://esa.github.io/pygmo/tutorials/death_penalty.html
+Penalty Guided Genetic Search for Reliability Design Optimization, erişim tarihi Kasım 3, 2025, https://www.eng.auburn.edu/~smithae/files/compie.pdf
+Evolutionary Algorithms for Parameter Optimization—Thirty Years Later - MIT Press Direct, erişim tarihi Kasım 3, 2025, https://direct.mit.edu/evco/article/31/2/81/115462/Evolutionary-Algorithms-for-Parameter-Optimization
+Handling-Costraints in Genetic Algorithms: implementing the death penalty - Stack Overflow, erişim tarihi Kasım 3, 2025, https://stackoverflow.com/questions/31952422/handling-costraints-in-genetic-algorithms-implementing-the-death-penalty
+ADAPTIVE PENALTY FUNCTION FOR SOLVING CONSTRAINED EVOLUTIONARY OPTIMIZATION - Journal of Theoretical and Applied Information Technology, erişim tarihi Kasım 3, 2025, http://www.jatit.org/volumes/Vol5No3/12Vol5No3.pdf
+Penalty Function Optimization in Dual Response Surfaces Based on Decision Maker's Preference and Its Application to Real Data - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2073-8994/14/3/601
+Theoretical and numerical constraint-handling techniques used with evolutionary algorithms: a survey of the state of the art, erişim tarihi Kasım 3, 2025, https://faculty.csu.edu.cn/_tsf/00/65/zYJ7vmQJbU7z.pdf
+PENALTY FUNCTION METHODS FOR CONSTRAINED OPTIMIZATION WITH GENETIC ALGORITHMS Özgür Yeniay Hacettepe University, Faculty o - Semantic Scholar, erişim tarihi Kasım 3, 2025, https://pdfs.semanticscholar.org/421c/3443aae1f173ccd773cf53e27e984c0b7a10.pdf
+Constraint-Handling Techniques used with Evolutionary Algorithms - CMAP, erişim tarihi Kasım 3, 2025, http://www.cmap.polytechnique.fr/~nikolaus.hansen/proceedings/2018/GECCO/companion/companion_files/tut110s1-file1.pdf
+An Adaptive Penalty Formulation for Constrained Evolutionary Optimization - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/224384413_An_Adaptive_Penalty_Formulation_for_Constrained_Evolutionary_Optimization
+adaptive penalty methods for genetic optimization of constrained combinatorial problems, erişim tarihi Kasım 3, 2025, https://eng.auburn.edu/~aesmith/files/orsa.pdf
+A Self Adaptive Penalty Function Based Algorithm for Constrained Optimization | Request PDF - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/224645717_A_Self_Adaptive_Penalty_Function_Based_Algorithm_for_Constrained_Optimization
+An Adaptive Penalty Formulation for Constrained Evolutionary Optimization - SciSpace, erişim tarihi Kasım 3, 2025, https://scispace.com/papers/an-adaptive-penalty-formulation-for-constrained-evolutionary-27hag3ktwq
+Pseudo-code describing the GeneRepair algorithm as applied to the TSP - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/figure/Pseudo-code-describing-the-GeneRepair-algorithm-as-applied-to-the-TSP_fig1_220741661
+Fast Projection Onto Convex Smooth Constraints - Proceedings of Machine Learning Research, erişim tarihi Kasım 3, 2025, http://proceedings.mlr.press/v139/usmanova21a/usmanova21a.pdf
+The Combination Projection Method for Solving Convex Feasibility Problems - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2227-7390/6/11/249
+algorithms and convergence results of projection methods for inconsistent feasibility problems: a review - Optimization Online, erişim tarihi Kasım 3, 2025, https://optimization-online.org/wp-content/uploads/2018/02/6481.pdf
+ON PROJECTION ALGORITHMS FOR SOLVING CONVEX FEASIBILITY PROBLEMS - The University of British Columbia, erişim tarihi Kasım 3, 2025, https://cmps-people.ok.ubc.ca/bauschke/Research/05.pdf
+Projections onto the Set of Feasible Inputs and the Set of Feasible Solutions - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/pdf/1909.07485
+Speciated Evolutionary Algorithm for Dynamic Constrained Optimisation - CMAP, erişim tarihi Kasım 3, 2025, http://www.cmap.polytechnique.fr/~nikolaus.hansen/proceedings/2016/PPSN/papers/9921/99210019.pdf
+Application of a Hybrid Multi-Objective Evolutionary Algorithm to the Uncapacitated Exam Proximity Problem - PATAT Conferences, erişim tarihi Kasım 3, 2025, https://patatconference.org/patat2004/proceedings/151.pdf
+An adaptive greedy repair operator in a genetic algorithm for the minimum vertex cover problem - AIMS Press, erişim tarihi Kasım 3, 2025, https://www.aimspress.com/article/doi/10.3934/math.2025600
+A Heuristic Algorithm and Simulation Approach to Relative Location of Facilities | Management Science - PubsOnLine, erişim tarihi Kasım 3, 2025, https://pubsonline.informs.org/doi/10.1287/mnsc.9.2.294
+Heuristic Algorithms for Solving an Integrated Dynamic Center Facility Location-Network Design Model | Request PDF - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/275344980_Heuristic_Algorithms_for_Solving_an_Integrated_Dynamic_Center_Facility_Location-Network_Design_Model
+A Heuristic Approach for Resolving Spatial Conflicts of Buildings in ..., erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2220-9964/12/10/392
+Comparison of Selection Methods for Evolutionary Optimization - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/2372815_Comparison_of_Selection_Methods_for_Evolutionary_Optimization
+(PDF) Comparative Study of Different Selection Techniques in Genetic Algorithm, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/325011628_Comparative_Study_of_Different_Selection_Techniques_in_Genetic_Algorithm
+An Evolutionary Many-Objective Optimization Algorithm Using ..., erişim tarihi Kasım 3, 2025, https://www.egr.msu.edu/~kdeb/papers/k2012010.pdf
+Comparison of metaheuristic optimization algorithms with a new modified deb feasibility constraint handling technique - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/353572283_Comparison_of_metaheuristic_optimization_algorithms_with_a_new_modified_deb_feasibility_constraint_handling_technique
+A Dual-Population-Based NSGA-III for Constrained Many-Objective Optimization - NIH, erişim tarihi Kasım 3, 2025, https://pmc.ncbi.nlm.nih.gov/articles/PMC9858107/
+Handling Constrained Multiobjective Optimization Problems With Constraints in Both the Decision and Objective Spaces, erişim tarihi Kasım 3, 2025, https://staff.fmi.uvt.ro/~daniela.zaharie/ma2019/Projects/ResearchPapers/MultiobjectiveOptimization/MOEA%2Bconstraints_2019.pdf
+Yao, X.: Stochastic ranking for constrained evolutionary optimization. IEEE Trans. Evol. Comput. 4, 284-294 - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/3418601_Yao_X_Stochastic_ranking_for_constrained_evolutionary_optimization_IEEE_Trans_Evol_Comput_4_284-294
+Stochastic ranking for constrained evolutionary optimization, erişim tarihi Kasım 3, 2025, https://faculty.csu.edu.cn/_resources/group1/M00/00/65/wKiylWIIxVaADiBnAAb4eve5Bz8876.pdf
+[PDF] Stochastic ranking for constrained evolutionary optimization - Semantic Scholar, erişim tarihi Kasım 3, 2025, https://www.semanticscholar.org/paper/Stochastic-ranking-for-constrained-evolutionary-Runarsson-Yao/827e3d01e52438e29aac1f6c4c8a2ed972a87c75
+Stochastic Ranking Algorithm for Many-Objective Optimization Based on Multiple Indicators - Pure, erişim tarihi Kasım 3, 2025, https://pure-oai.bham.ac.uk/ws/portalfiles/portal/39635849/Li_et_al_Stochastic_Ranking_Algorithm_Evolutionary_Computation.pdf
+Epsilon constrained method for constrained multiobjective ..., erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/266658260_Epsilon_constrained_method_for_constrained_multiobjective_optimization_problems_Some_preliminary_results
+Solving Constrained Optimization Problems by the ε Constrained Particle Swarm Optimizer with Adaptive Velocity Limit Control - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/224673238_Solving_Constrained_Optimization_Problems_by_the_e_Constrained_Particle_Swarm_Optimizer_with_Adaptive_Velocity_Limit_Control
+Epsilon Constrained Method for Constrained Multiobjective Optimization Problems: Some Preliminary Results - Zhun Fan, erişim tarihi Kasım 3, 2025, http://zhunfan.github.io/conferences/2014%20Epsilon%20constrained%20method%20for%20constrained%20multiobjective%20optimization%20problems%20some%20preliminary%20results.pdf
+ϵ-Constraint Handling - pymoo, erişim tarihi Kasım 3, 2025, https://pymoo.org/constraints/eps.html
+A Review on Constraint Handling Techniques for Population ... - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/pdf/2206.13802
+Two-Stage Archive Evolutionary Algorithm for Constrained Multi-Objective Optimization, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2227-7390/13/3/470
+A Bi-objective Constrained Optimization Methodology Using a Hybrid Multi-Objective and Penalty Function Approach - MSU College of Engineering, erişim tarihi Kasım 3, 2025, https://www.egr.msu.edu/~kdeb/papers/c2015007.pdf
+Redalyc.An efficient constraint handling methodology for multi-objective evolutionary algorithms, erişim tarihi Kasım 3, 2025, https://www.redalyc.org/pdf/430/43019324014.pdf
+On the use of the Total Constraint Violation as an Additional Objective in Evolutionary Multi-Objective Optimization | Request PDF - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/388209901_On_the_use_of_the_Total_Constraint_Violation_as_an_Additional_Objective_in_Evolutionary_Multi-Objective_Optimization?_tp=eyJjb250ZXh0Ijp7InBhZ2UiOiJzY2llbnRpZmljQ29udHJpYnV0aW9ucyIsInByZXZpb3VzUGFnZSI6bnVsbH19
+Infeasibility Driven Evolutionary Algorithm for Constrained Optimization - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/225673364_Infeasibility_Driven_Evolutionary_Algorithm_for_Constrained_Optimization
+Quantum optimization with linear Ising penalty functions for customer data science | Phys. Rev. Research, erişim tarihi Kasım 3, 2025, https://link.aps.org/doi/10.1103/PhysRevResearch.6.043241
+Performance Comparison of NSGA-II and NSGA-III on Various Many-Objective Test Problems, erişim tarihi Kasım 3, 2025, https://ci-labo-omu.github.io/assets/paper/pdf_file/multiobjective/CEC2016_NSGA-III_Final.pdf
+Improved NSGA-III with Second-Order Difference Random Strategy for Dynamic Multi-Objective Optimization - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2227-9717/9/6/911
+Comparison of multi-objective genetic algorithms for optimization of cascade reservoir systems | Journal of Water and Climate Change | IWA Publishing, erişim tarihi Kasım 3, 2025, https://iwaponline.com/jwcc/article/13/11/4069/91573/Comparison-of-multi-objective-genetic-algorithms
+Earthquake-Resilient Housing Setback Distances and Open Road Networks for Sustainable Urbanization: A Case Study in Elbistan (Türkiye) - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2071-1050/17/3/1254
+Reconstruction in Türkiye After the 6 february earthquakes Assessment of Water and Sanitation, Modular Buildings, Circular Economy Sectors, erişim tarihi Kasım 3, 2025, https://recovery.preventionweb.net/media/97013/download
+Earthquake Code For Turkey | PDF | Reinforced Concrete - Scribd, erişim tarihi Kasım 3, 2025, https://www.scribd.com/document/63069131/Earthquake-Code-for-Turkey
+EVOLUTION OF SEISMIC BUILDING DESIGN AND CONSTRUCTION PRACTICE IN TURKEY (To be submitted to "The Structural Design of Tall - USGS Publications Warehouse, erişim tarihi Kasım 3, 2025, https://pubs.usgs.gov/of/2001/of01-163/GENERAL_PUBLICATIONS/Sezen_StructDesignofTallBld.pdf
+Understanding Turkish Seismic Safety Regulations - Karanfiloglu Hukuk ve Arabuluculuk, erişim tarihi Kasım 3, 2025, https://www.karanfiloglu.av.tr/en/understanding-turkish-seismic-safety-regulations/
+planlı alanlar imar yönetmeliği, erişim tarihi Kasım 3, 2025, http://www.imarkadastro.com/userfiles/file/Dokuman/Arsalara%20iliskin%20huekuemler.pdf
+erişim tarihi Kasım 3, 2025, https://www.mimarim.com/mevzuat/y%C3%B6netmelikler/planl%C4%B1-alanlar-imar-y%C3%B6netmeli%C4%9Fi/bah%C3%A7e-mesafeleri#:~:text=MADDE%2023%20%2D%20(1)%20Uygulama,mesafesi%20en%20az%203.00%20metredir.
+Evaluating and Optimizing Urban Green Spaces for Compact Urban Areas: Cukurova District in Adana, Turkey - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2220-9964/7/2/70
+(PDF) EXAMINING THE ACCESSIBILITY OF SIDEWALKS FOR WHEELCHAIR USERS: THE CASE OF EFELER CITY (AYDIN TURKIYE) - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/396002007_EXAMINING_THE_ACCESSIBILITY_OF_SIDEWALKS_FOR_WHEELCHAIR_USERS_THE_CASE_OF_EFELER_CITY_AYDIN_TURKIYE
+The Relationship Between Planned Development and Green Space Sufficiency: The Case of Istanbul - Preprints.org, erişim tarihi Kasım 3, 2025, https://www.preprints.org/manuscript/202508.1523/v1/download
+The Relationship Between Planned Development and Green Space Sufficiency: The Case of Istanbul - Preprints.org, erişim tarihi Kasım 3, 2025, https://www.preprints.org/manuscript/202508.1523/v1
+A Preliminary Assessment on the Accessibility of Urban Green Spaces: The Case of Bursa, Yıldırım* - DergiPark, erişim tarihi Kasım 3, 2025, https://dergipark.org.tr/en/download/article-file/2137862
+Investigation Of Open Green Recreation Spaces' In Urban Environment With The Context Of Healthy City Planning: Case Of Turkey - European Scientific Journal, erişim tarihi Kasım 3, 2025, https://eujournal.org/index.php/esj/article/view/7840/7557
+Türkiye aims to expand protected areas to 30 pct by 2030 - Hürriyet Daily News, erişim tarihi Kasım 3, 2025, https://www.hurriyetdailynews.com/turkiye-aims-to-expand-protected-areas-to-30-pct-by-2030-210183
+Constraint-handling in genetic algorithms through the use of dominance-based tournament selection, erişim tarihi Kasım 3, 2025, https://faculty.csu.edu.cn/_resources/group1/M00/00/65/wKiylWIIxZWAO_iSAAMDy_8zUMA397.pdf
+Flow-chart for rejection of infeasible individuals handling algorithm. - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/figure/Flow-chart-for-rejection-of-infeasible-individuals-handling-algorithm_fig3_222708700
+Basic Modeling for Discrete Optimization - First Steps by The University of Melbourne #1, erişim tarihi Kasım 3, 2025, https://www.youtube.com/watch?v=Ku2z4SkwPJs
+A Multi-stage Algorithm for Solving Multi-objective Optimization Problems with Multi-constraints | Request PDF - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/365718107_A_Multi-stage_Algorithm_for_Solving_Multi-objective_Optimization_Problems_with_Multi-constraints
+Feasibility-guided evolutionary optimization of pump station design ..., erişim tarihi Kasım 3, 2025, https://pmc.ncbi.nlm.nih.gov/articles/PMC12491513/
+[2304.04166] Experience-Based Evolutionary Algorithms for Expensive Optimization - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/abs/2304.04166
+A comparison of eight optimization methods applied to a wind farm layout optimization problem - WES, erişim tarihi Kasım 3, 2025, https://wes.copernicus.org/articles/8/865/2023/wes-8-865-2023.pdf
+Investigating a Genetic Algorithm- Simulated Annealing Hybrid Applied to University Course Timetabling Problem - DiVA portal, erişim tarihi Kasım 3, 2025, https://www.diva-portal.org/smash/get/diva2:927039/FULLTEXT01.pdf
+An Empirical Comparison of Combinations of Evolutionary Algorithms and Neural Networks for Classification Problems - | Computing - Lawrence Livermore National Laboratory, erişim tarihi Kasım 3, 2025, https://computing.llnl.gov/sites/default/files/UCRL-JC-151936.pdf
