@@ -1,0 +1,479 @@
+
+A Technical Guide to Flood Risk Assessment and Stormwater Management Optimization for Urban Spatial Planning
+
+
+Part 1: Principles of Hydrological Modeling for Urban Catchments
+
+The quantification of stormwater runoff is the foundation of flood risk assessment. This process involves modeling the transformation of rainfall into overland flow, determining both the total volume of water and its peak discharge rate. The selection of a model depends on the required output (peak flow vs. volume) and the allowable computational expense.
+
+1.1 Rainfall-Runoff Generation: Formulations and Application
+
+
+1.1.1 The Rational Method (Q=CIA): Peak Flow Estimation
+
+The Rational Method is an empirical formula used for estimating the peak discharge from small drainage areas, typically less than 20 acres, though some jurisdictions permit up to 160 acres.1 It is not suitable for complex topography or for calculating runoff volume.1
+The method is defined by the equation 1:
+$$Q = C \cdot i \cdot A$$
+Where:
+	•	$Q$ = Peak flow rate (e.g., m³/s or ft³/s).
+	•	$C$ = Runoff coefficient (dimensionless). This is the key variable for spatial planning, representing the integrated hydrological response of a surface.
+	•	$i$ = Rainfall intensity (e.g., mm/hr or in/hr) for a specific storm frequency (e.g., 100-year) and a duration equal to the Time of Concentration ($T_c$).
+	•	$A$ = Drainage area (e.g., hectares or acres).
+The runoff coefficient $C$ aggregates complex processes like infiltration and surface storage into a single value representing the ratio of runoff to rainfall.5 It is highly dependent on land cover, as shown in Table 1.1.
+Table 1.1: Representative Runoff Coefficients (C) by Land Use
+
+Land Use / Surface Type
+Runoff Coefficient (C)
+Business: Downtown Areas
+0.70 – 0.95
+Residential: Single-family
+0.30 – 0.50
+Residential: Multi-units, attached
+0.60 – 0.75
+Lawns: Sandy soil, flat (2%)
+0.05 – 0.10
+Lawns: Heavy soil, steep (7%)
+0.25 – 0.35
+Pavement / Roofs
+0.70 – 0.95
+(Source: Synthesized from 5)
+
+The Time of Concentration ($T_c$) is the time required for water to flow from the hydraulically most distant point in the watershed to the outlet.2 This is a critical parameter, as the rainfall intensity $i$ is selected from an IDF curve based on this duration.
+For integration with a spatial optimization algorithm, a static $C$ value is insufficient. Instead, a composite $C$ value must be dynamically calculated for each proposed layout $x$:
+$$C_{\text{composite}}(x) = \frac{\sum (A_i \cdot C_i)}{A_{\text{total}}}$$
+This $C_{\text{composite}}$ provides the direct, high-speed link between a proposed spatial plan (the areas $A_i$ of buildings, grass, and Green Infrastructure) and its peak hydrological response ($Q$).
+
+1.1.2 The SCS/NRCS Curve Number (CN) Method: Runoff Volume Estimation
+
+The SCS/NRCS Curve Number (CN) method is a more sophisticated empirical model used to estimate the volume of direct runoff (precipitation excess, $P_e$) from a given rainfall event ($P$).6 It is responsive to soil type, land use/cover, and antecedent soil moisture.7 This method is essential for designing Green Infrastructure (GI) intended to meet specific retention volume requirements.
+The methodology is sequential:
+	•	Potential Maximum Retention ($S$): First, the $CN$ (a value from 30 to 100) is determined for the site based on land use and hydrologic soil group. The maximum retention $S$ is then calculated from the $CN$ 8:
+	•	(Metric) $S = \frac{25400}{CN} - 254$ (in mm)
+	•	(Imperial) $S = \frac{1000}{CN} - 10$ (in inches)
+	•	Initial Abstraction ($I_a$): This represents all initial losses before runoff begins (e.g., interception, depression storage). It is empirically related to $S$ 8:
+	•	$I_a = 0.2 \cdot S$
+	•	Precipitation Excess ($P_e$) / Runoff Volume: The runoff volume $P_e$ is calculated based on the total storm precipitation $P$. Runoff only occurs if $P > I_a$.6
+	•	If $P \le I_a$: $P_e = 0$
+	•	If $P > I_a$: $P_e = \frac{(P - I_a)^2}{P - I_a + S}$ or (substituting $I_a = 0.2S$): $P_e = \frac{(P - 0.2S)^2}{P + 0.8S}$
+This method is critical for formulating regulatory constraints. For example, many regulations (including the intent of the 2017 Turkish regulation 9) require capturing a "first flush" volume, often standardized as the runoff from a 25mm storm.10 To implement this as an optimization constraint, the required retention volume is calculated by setting $P = 25$ mm and using the composite, post-development $CN$ to find $S$. The resulting $P_e$ (multiplied by the site area) becomes the minimum volume the proposed GI network must be designed to store.
+
+1.1.3 Dynamic Modeling: EPA Storm Water Management Model (SWMM)
+
+The EPA Storm Water Management Model (SWMM) is a comprehensive, dynamic rainfall-runoff simulation model.11 It is used for both single-event and long-term continuous simulation of runoff quantity and quality, primarily in urban areas.11
+	•	Hydrology: SWMM models each subcatchment as a nonlinear reservoir. It solves for flow depth using Manning's equation and routes flow based on surface slope and width.
+	•	Hydraulics: It transports this runoff through a user-defined network of pipes, channels, storage units, and regulators.11 It can solve the full 1D Saint-Venant equations (Dynamic Wave routing), providing a highly accurate simulation of channel flow, backwater effects, and looped connections.13
+For the purposes of optimization, SWMM's high fidelity is its primary drawback. A single simulation can take several minutes 14, making it computationally prohibitive for use as a fitness function within an Evolutionary Algorithm (EA) that requires thousands of evaluations. Therefore, SWMM's role is not optimization but validation. It serves as the "ground-truth" model to (a) validate the accuracy of the fast proxy model and (b) validate the final optimized design produced by the EA.15 The pyswmm Python library facilitates this by allowing scripted interaction with the SWMM engine.16
+
+1.2 Digital Terrain Analysis and Flow Routing
+
+This component models where the generated runoff will move across the site's topography. This is achieved through raster-based analysis of a Digital Elevation Model (DEM).
+
+1.2.1 Flow Direction Algorithms: D8 vs. D-Infinity (DINF) vs. MFD
+
+The algorithm used to determine flow direction from a DEM grid cell fundamentally impacts the resulting hydrological pathways.
+	•	D8 (Deterministic 8): This is the most common and computationally simplest method. Flow from the center cell is assigned entirely to one of its eight adjacent or diagonal neighbors: the one with the steepest downslope gradient.18 While fast, D8 is a non-dispersive algorithm.20 This tends to produce unrealistic, parallel flow paths on planar or convex hillslopes and is best suited for well-defined, convergent channels.20
+	•	Multiple Flow Direction (MFD): This algorithm, described by Qin et al. (2007), partitions flow from one cell to all of its downslope neighbors.18 The flow is proportioned based on the slope to each neighbor. This is a highly dispersive model, effective for representing overland sheet flow but less so for channelization.21
+	•	D-Infinity (DINF): Developed by Tarboton (1997), DINF determines flow direction as a single, continuous angle (a floating-point number) representing the steepest slope on eight triangular facets created in a 3x3 window.18 This allows flow to be proportioned between two downslope cells, providing a more realistic representation of flow dispersion on hillslopes than D8 without the excessive dispersion of MFD.22
+The choice of algorithm is purpose-driven. For delineating channel networks, D8 is often sufficient. However, for the primary goal of this project—creating a fast inundation proxy—the Height Above Nearest Drainage (HAND) method is used. HAND is fundamentally a calculation of vertical hillslope distance to the nearest channel.23 Therefore, the D-Infinity (DINF) algorithm is the correct choice for this application, as it more accurately models flow paths across hillslopes.22
+
+1.2.2 Flow Accumulation Algorithm (D8 Pseudocode)
+
+Flow accumulation calculates the total number of upslope cells draining into each cell, identifying areas of concentrated flow (i.e., streams). It requires a flow direction grid as input. While many algorithms exist, a stack-based (non-recursive) approach is highly efficient and common in modern GIS packages.24
+The following pseudocode outlines the logic for a D8 flow accumulation:
+
+Kod snippet'i
+
+
+function D8_Flow_Accumulation(flow_direction_grid, dem):   // 1. Initialization   rows, cols = dimensions(dem)   accumulation_grid = initialize_grid(rows, cols, value=1)   in_degree_grid = initialize_grid(rows, cols, value=0)   processing_stack = new Stack()    // 2. Calculate in-degrees (how many cells flow INTO this cell)   for r from 0 to rows:     for c from 0 to cols:       (next_r, next_c) = get_downslope_neighbor(flow_direction_grid, r, c)       if (next_r, next_c) is a valid cell:         in_degree_grid[next_r][next_c] += 1    // 3. Identify headwater cells (in-degree is 0) and push to stack   for r from 0 to rows:     for c from 0 to cols:       if in_degree_grid[r][c] == 0:         push (r, c) onto processing_stack    // 4. Process the stack in topological order   while processing_stack is not empty:     (r, c) = pop from processing_stack          // 5. Find the single downslope neighbor (D8 logic)     (next_r, next_c) = get_downslope_neighbor(flow_direction_grid, r, c)          if (next_r, next_c) is a valid cell:       // 6. Pass accumulation value       accumulation_grid[next_r][next_c] += accumulation_grid[r][c]              // 7. Reduce in-degree of the neighbor       in_degree_grid[next_r][next_c] -= 1              // 8. If neighbor has no more upslope cells to process, add to stack       if in_degree_grid[next_r][next_c] == 0:         push (next_r, next_c) onto processing_stack            return accumulation_grid 
+This logic is implemented in Python libraries like pysheds 25 or can be built using rasterio 26 and scipy.ndimage.27
+
+Part 2: Quantifying Flood Risk and Vulnerability
+
+Quantifying risk requires translating the hydrological "source" (runoff) into a "threat" (inundation) and assessing its impact on "receptors" (buildings and infrastructure).
+
+2.1 Design Storm Formulation: From Return Periods to Hyetographs
+
+	•	Return Period (T): A 100-year flood is a flow event that has a 1% chance of being equaled or exceeded in any given year, known as the 1% Annual Exceedance Probability (AEP).28 The choice of return period (e.g., 10-year, 50-year, 100-year) depends on the design standard and the criticality of the infrastructure.29
+	•	Intensity-Duration-Frequency (IDF) Curves: This is the standard tool for defining the design storm.30 An IDF curve is a set of relationships, typically empirical equations, that define the average rainfall intensity $i$ for a given duration $d$ and return period $T$.30
+	•	Using the IDF Curve:
+	•	Determine Duration ($d$): For the Rational Method, the duration is set equal to the site's Time of Concentration ($T_c$).2
+	•	Find Intensity ($i$): Using the 100-year IDF curve for the project location (e.g., Istanbul), the intensity $i$ corresponding to duration $d$ is identified. This $i$ is used directly in $Q=CiA$.
+	•	Develop Hyetograph: For dynamic models (SWMM/HEC-RAS), a full storm hydrograph (a time-series of rainfall) is needed, not just a peak intensity. This hyetograph is also derived from the IDF curve, using a synthetic storm distribution like the Alternating Block Method.32
+
+2.2 Flood Inundation Mapping Methodologies
+
+
+2.2.1 High-Fidelity: 2D Shallow Water Equations (SWE)
+
+The most accurate method for urban inundation mapping is to solve the two-dimensional (2D) Shallow Water Equations (SWE), which govern the conservation of mass and momentum.33 Models like HEC-RAS 2D 34 and MIKE 21 33 implement this. They can accurately simulate complex hydrodynamic behaviors critical in urban areas, such as inertial effects, backwater from obstructions, and flow velocities.34
+The primary drawback is computational expense. A high-resolution 2D HEC-RAS simulation can require 24 to 45 hours to run.14 This high "computational overhead" 34 makes 2D SWE models completely unsuitable for an EA fitness function, which must be evaluated thousands of times. Their role is restricted to validation of the final, optimized design.
+
+2.2.2 Simplified Models (The "Fast" Alternatives)
+
+To meet the <5 second evaluation constraint, a simplified proxy model is required.
+	•	Kinematic Wave: This is a simplification of the SWE that neglects pressure, velocity, and inertial terms.33 It assumes the water surface slope equals the bed slope.38 It is much faster but loses accuracy in flat terrain or where backwater effects are significant.
+	•	GIS "Bathtub" Model: The simplest approach. A total flood volume (from SCS-CN) is "poured" onto the DEM. All cells below the resulting water surface elevation are marked as "flooded." This model is very fast but hydraulically incorrect, as it ignores flow paths and conveyance.
+	•	Height Above Nearest Drainage (HAND): This is the selected proxy model. HAND is a terrain-based proxy that relates topography to flood stage.39 For every cell on the landscape, HAND is its vertical elevation difference relative to the nearest cell identified as part of the drainage network.23 An inundation map is then generated by thresholding the HAND raster: all cells where $HAND < \text{Flood Stage}$ are considered inundated.40 This is a simple, hydrologically-informed raster operation that runs in milliseconds, making it the ideal core for the fast fitness function.
+
+2.3 Vulnerability and Damage Assessment
+
+Flood risk is the product of the hazard, the elements exposed to it, and their vulnerability.41
+	•	Hazard Quantification: The output of the flood model, defined by:
+	•	Flood Depth: The primary driver of building damage.41
+	•	Flood Velocity: Critical for structural integrity and human safety.42
+	•	Hazard Index: These factors are often combined into a single hazard index. A common formula is 43: $Hazard = \text{Depth} \times (\text{Velocity} + 0.5)$ A value $> 2.5$ is considered "Extreme" danger, while $< 0.75$ is "Low".43
+	•	Exposure: The elements at risk. In this context, this is the output of the optimizer's building placement algorithm.
+	•	Vulnerability: The susceptibility of the exposed elements. This is quantified using depth-damage curves, which relate water depth to a monetary damage cost for a specific building type (e.g., masonry, single-story).42 Vulnerability can be reduced through adaptive capacity, such as elevating foundations or using flood-resistant materials.45
+The fitness function $f_1(\text{risk})$ can thus be formulated with increasing complexity:
+	•	Simple (Fastest): $f_1 = \text{minimize(Total Inundated Area)}$
+	•	Better (Chosen): $f_1 = \text{minimize(Sum of Inundation Depth at Building Footprints)}$
+	•	Best (Slowest): $f_1 = \text{minimize(Sum of Expected Damage Cost)}$ (requires lookup of depth-damage curves for each building).
+For the <5s constraint, the second formulation (sum of depth at buildings) provides the best balance of speed and accuracy.
+
+Part 3: Fast Computational Models for Evolutionary Algorithm Integration (The <5s Evaluation)
+
+Meeting the <5 second evaluation time constraint is the central technical challenge. This requires moving from high-fidelity simulation to high-speed proxy modeling. The computational workflow must be pre-calculated, leaving only minimal, near-instantaneous calculations inside the optimization loop.
+
+3.1 GIS-Based Rapid Assessment: The Height Above Nearest Drainage (HAND) Method
+
+The HAND method is the primary recommended approach. It is a terrain-based proxy that pre-calculates the relative elevation of the entire landscape, allowing for "on-the-fly" inundation mapping based on a single flood stage value.39
+Computational Workflow (Pre-processing):
+The following steps are performed once before the optimization begins, using a high-resolution DEM (e.g., 5m).
+	•	Input: High-resolution DEM (e.g., from Copernicus or local LiDAR).26
+	•	Step 1: DEM Conditioning: Sinks and depressions in the DEM are filled to ensure continuous flow paths. This is done using libraries like pysheds (e.g., grid.fill_depressions).22
+	•	Step 2: Flow Direction: A D-Infinity (DINF) flow direction grid is computed.22 This is critical for accurately modeling the hillslope paths that define HAND.23 (e.g., pysheds: grid.flowdir(routing='dinf')).
+	•	Step 3: Flow Accumulation: A DINF flow accumulation grid is generated.22
+	•	Step 4: Define Drainage Network: The accumulation grid is thresholded to create a raster mask of the stream/drainage network (e.g., drainage_mask = acc_grid > 1000). This threshold defines what the model considers a "drainage" channel.47
+	•	Step 5: Calculate HAND: The vertical distance from every cell to the nearest cell in the drainage_mask is calculated. pysheds provides a direct function: grid.compute_hand().48
+The result is a hand.tif raster where each cell's value is its elevation (in meters) above the nearest stream.
+Using HAND as a Fitness Function (Inside the <5s Loop):
+This pre-computed HAND raster allows for an extremely fast fitness evaluation:
+	•	The EA proposes a layout (building and GI locations).
+	•	The layout's total impervious surface ratio is used in a simplified model (e.g., Rational Method, Part 1.1.1) to estimate a peak discharge (Q).
+	•	This $Q$ is converted to a flood stage (H) (e.g., 2.5m) using a pre-computed synthetic rating curve.39
+	•	Fitness Evaluation (milliseconds): The flood risk is calculated using fast raster algebra (e.g., with numpy):
+	•	inundation_depth = np.maximum(0, H - hand_raster)
+	•	depth_at_buildings = inundation_depth * layout_buildings (where layout_buildings is a binary array from the EA)
+	•	f1_risk = np.sum(depth_at_buildings)
+This workflow is exceptionally fast. The expensive GIS operations (flow routing, HAND calculation) are done once. The iterative fitness evaluation is just array arithmetic. Low-complexity models like this are recognized as suitable, rapid alternatives to HEC-RAS 2D for fast predictions in time-limited scenarios.34
+
+3.2 Surrogate Modeling: Machine Learning for Runoff Prediction (Advanced Alternative)
+
+An alternative is to create a surrogate model (or metamodel) that emulates the complex behavior of a high-fidelity model like SWMM.51
+Methodology:
+	•	Offline Training: This is a computationally expensive pre-processing step. The high-fidelity SWMM/HEC-RAS model is run thousands of times with varying inputs (e.g., different building layouts, GI placements).
+	•	Training Data: The inputs (layout features) and outputs (flood risk metrics) are collected:
+	•	Inputs ($X$): $$ * Outputs ($Y$):$$
+	•	Model: A machine learning model, such as a Neural Network 53, Support Vector Regression 54, or Random Forest 55, is trained to learn the function $Y = f(X)$.
+State-of-the-Art (CNNs): Recent research (2020-2025) uses Convolutional Neural Networks (CNNs) for this purpose, as they can interpret spatial data.56 A U-Net architecture, for example, can take a multi-channel image (DEM, land use, rainfall) as input and output a 2D image (raster) of the predicted flood depths.58
+Using as Fitness Function (Milliseconds):
+Once trained, the surrogate model is extremely fast. The fitness evaluation becomes a single prediction call:
+f1_risk = trained_cnn_model.predict(layout_as_raster).60
+This approach requires a massive upfront training investment but provides a highly accurate, near-instantaneous fitness function. The HAND method is generally preferred for novel-site deployment due to its lower setup cost.
+
+Part 4: Stormwater Management Strategies: GI, LID, and Blue-Green Infrastructure
+
+These strategies form the "toolkit" for the optimization algorithm—the set of solutions it can place on the site to mitigate flood risk and meet regulatory constraints.
+
+4.1 Green Infrastructure (GI) and Low Impact Development (LID)
+
+The philosophy of GI/LID is to manage stormwater at its source by mimicking natural hydrological processes: infiltration, evapotranspiration, and detention.61
+	•	4.1.1 Infiltration-Based:
+	•	Bioswales / Vegetated Swales: Shallow, vegetated channels that slow stormwater, filter pollutants, and promote infiltration, rather than just conveying it.61
+	•	Rain Gardens / Bioretention: Engineered depressions containing specific soil media, mulch, and vegetation. They are designed to capture, store, and infiltrate runoff from nearby impervious surfaces.63
+	•	Permeable Pavements: Includes porous asphalt, pervious concrete, and permeable interlocking pavers. These surfaces allow rainwater to infiltrate into a sub-base storage layer, reducing runoff volume and filtering pollutants.61 They require maintenance to prevent clogging.65
+	•	4.1.2 Storage/Evapotranspiration-Based:
+	•	Green Roofs: A roofing system composed of vegetation and a growing medium planted over a waterproofing membrane. They absorb and evapotranspire significant amounts of rainfall, delaying and reducing runoff peaks and volumes.61 A field study in Istanbul, for example, found an average retention of 80.8% and significantly reduced runoff curve numbers (CN 84-90) compared to a conventional roof (CN 98).67
+
+4.2 Blue-Green Infrastructure (BGI)
+
+BGI combines the ecological benefits of green infrastructure with the storage and conveyance functions of "blue" infrastructure (water bodies).
+	•	Retention Ponds (Wet Ponds): Constructed basins that maintain a permanent pool of water.68 They manage stormwater by detaining runoff and settling pollutants.69
+	•	Constructed Wetlands: A more advanced form of retention pond that incorporates wetland vegetation. They are highly effective at pollutant removal and attenuating flood flows by mimicking natural wetland functions.69
+
+4.3 Grey Infrastructure Integration
+
+GI/LID does not typically replace traditional "grey" infrastructure (pipes and drains) but rather complements it. GI is used to reduce the peak load and volume entering the grey system.69
+	•	Detention Basins (Dry Ponds): These are basins designed to temporarily store stormwater runoff and release it at a controlled rate through an outlet structure. They are dry between storm events.69
+	•	Storm Drains: The conventional network of pipes. GI reduces the required diameter and capacity of this network, often leading to cost savings.75
+
+4.4 Quantifying GI Effectiveness
+
+For the optimizer's cost-benefit analysis, each GI/LID practice must be assigned a quantitative effectiveness value. This data is synthesized from modeling studies and technical manuals.
+A key validation benchmark comes from a 2020 study on the highly urbanized Ayamama watershed in Istanbul. Using SWMM, it was found that combining green roofs and permeable pavements achieved a 56.02% peak runoff reduction and a 58.79% volume reduction for a 10-year return period storm.32 This provides a specific, localized target for optimization performance.
+Table 4.1: Quantitative Effectiveness of GI/LID Practices
+
+GI/LID Practice
+Key Mechanism
+Typical Peak Runoff Reduction
+Typical Volume Reduction
+Notes & Source
+Green Roof
+Evapotranspiration, Storage
+Moderate
+50% - 81%
+80.8% retention measured in Istanbul.67 Retains >50% of rain in 70% of storms.[76]
+Permeable Pavement
+Infiltration, Storage
+High
+50% - 90%
+Highly effective but depends on sub-base and soil infiltration. Prone to clogging.65
+Bioretention (Rain Garden)
+Infiltration, Filtration
+High
+50% - 90%
+High infiltration capacity. Also provides high pollutant removal (80-90% TSS).[70]
+Bioswale
+Conveyance, Infiltration
+Low to Moderate
+Low to Moderate
+Primarily a treatment/conveyance tool, not high-volume storage.[61]
+LID Combination (Ayamama)
+Combination
+56.02% (10-yr storm)
+58.79% (10-yr storm)
+Validation Target. Result for Green Roof + Permeable Pavement in Ayamama, Turkey.32
+LID (General)
+Combination
+~50% (median storm)
+~50%
+General basin-wide simulation results.[76]
+
+Part 5: Case Study: The Turkish Context
+
+Grounding the model in the specific environmental and regulatory context of Turkey is essential for its practical application and validation.
+
+5.1 Vulnerability Analysis
+
+
+5.1.1 Istanbul: Ayamama and Alibeyköy Basins
+
+Istanbul is exceptionally vulnerable to flash floods, a risk exacerbated by rapid, uncontrolled urbanization, particularly in sensitive basins.77
+The Ayamama Watershed is a critical case study. The catastrophic 2009 flood, which resulted in 32 fatalities, was directly attributed to an "especially high number of constructions on the floodplain".80 Hydrodynamic modeling of this event using SWMM confirmed that flood depths reached approximately 11 meters in critical regions, with a flood extent of 1,200 meters.80 This 2009 event provides a stark, real-world validation target for high-fidelity models. Furthermore, modeling studies using SLEUTH (a cellular automata urbanization model) confirmed that continued development in the watershed will considerably increase the inundated area.36
+This specific watershed provides two crucial validation points:
+	•	Extreme Event Validation: A calibrated high-fidelity model must be able to replicate the 11m depths of the 2009 flood.80
+	•	Mitigation Validation: The optimization solution should be benchmarked against the 2020 SWMM study on the same watershed, which demonstrated that a combination of green roofs and permeable pavements could achieve a 56.02% peak reduction for a 10-year storm.32
+
+5.1.2 Ankara: Infrastructure and "Sponge City" Goals
+
+Ankara faces significant water security and climate adaptation challenges.82 In response, the Ankara Green City Action Plan (GCAP) has been developed, with a stated strategic goal of transforming Ankara into a "sponge city".83 This policy explicitly calls for the implementation of Green Infrastructure (GI) 84 and green roofs 85 to manage stormwater and enhance resilience. The optimization framework detailed in this report provides a direct, quantitative tool to achieve this "sponge city" objective, moving it from a policy goal to an engineered reality.
+
+5.2 Regulatory and Climatic Framework
+
+
+5.2.1 Turkish Stormwater Regulations (ISKI)
+
+The primary national policy is the "Regulation on stormwater collection, storage, and discharge systems" (2017).9 This regulation marks a shift toward modern stormwater management. Its key principles explicitly promote groundwater recharge and rooftop rainwater harvesting.9 This provides a clear legal mandate for the use of LID and GI techniques.
+While the regulation provides technical details on pipe sizing (e.g., max 90% full) and flow velocity (0.5-5 m/s) 9, its intent is to promote infiltration. To translate this intent into a hard, quantifiable constraint for the optimization, a "first flush" capture requirement is appropriate. A common best-practice standard is the capture and management of the first 25mm of rainfall, which typically carries the highest pollutant load.10 This 25mm retention volume, calculated via the SCS-CN method (Part 1.1.2), will serve as the primary regulatory constraint ($g_1(x)$) for the optimizer.
+
+5.2.2 Climate Change Projections (CMIP6 for Turkey)
+
+Designing for flood resilience based only on historical rainfall data is no longer scientifically defensible. Recent climate projections for Turkey, using the latest CMIP6 models (Coupled Model Intercomparison Project Phase 6), indicate a clear and concerning trend. While total annual precipitation may decrease in some regions, there will be a significant increase in the frequency and intensity of extreme rainfall events.87 Projections show a shift toward "shorter-duration but higher-intensity rainfalls".87
+This non-stationarity of rainfall means that the historical 100-year IDF curve under-represents future risk. This creates a "Safe Development Paradox" 89, where infrastructure designed to be "safe" for a 100-year event may fail catastrophically, inducing more development in a risky area.
+A robust optimization framework must account for this. The final optimized layout should be validated not only against the historical 100-year storm but also against a future, climate-adjusted scenario (e.g., historical 100-year intensity + 20-30%). This ensures the spatial plan is resilient to future climate realities.
+
+Part 6: A Multi-Objective Optimization (MOO) Framework for Spatial Planning
+
+This section defines the mathematical problem, translating the competing goals of spatial planning into a language that an Evolutionary Algorithm (EA), such as the widely-used NSGA-II (Non-dominated Sorting Genetic Algorithm II) 90, can solve.
+
+6.1 Formulating the Problem
+
+
+6.1.1 Decision Variables (The "Genes")
+
+The EA manipulates a "genome" that represents the spatial plan. For the 500x500m site (assuming a 5m DEM resolution, this is a 100x100 grid), the decision variables $x$ are:
+	•	$x_{\text{buildings}}$: A $100 \times 100$ binary raster, where $1$ = Building Footprint and $0$ = No Building.
+	•	$x_{\text{GI}}$: A $100 \times 100$ integer raster, where $0$ = None, $1$ = Bioswale, $2$ = Permeable Pavement, $3$ = Rain Garden, etc.
+
+6.1.2 Objective Functions (The "Fitness")
+
+The EA evaluates each proposed layout $x$ against three conflicting objectives:
+	•	Objective 1: Minimize Flood Risk ($f_1(x)$) 93 This function uses the fast HAND proxy (Part 3.1) to penalize building placement in inundated areas.  $$f_1(x) = \min \left( \sum_{i \in \text{cells}} \text{Depth}_{\text{inundation}, i} \cdot x_{\text{buildings}, i} \right)$$  Where $\text{Depth}_{\text{inundation}, i} = \max(0, (\text{Flood Stage}(x) - \text{HAND}_i))$
+	•	Objective 2: Minimize GI/LID Cost ($f_2(x)$) 95 This function penalizes solutions that are expensive, summing the cost of the proposed GI network.  $$f_2(x) = \min \left( \sum_{i \in \text{cells}} \text{Cost}(x_{\text{GI}, i}) \right)$$
+	•	Objective 3: Maximize Development Density ($f_3(x)$) 90 This function rewards layouts that achieve the primary economic goal of development.  $$f_3(x) = \max \left( \sum_{i \in \text{cells}} x_{\text{buildings}, i} \right)$$
+
+6.1.3 Constraints (The "Rules")
+
+Constraints are "pass/fail" conditions that define a feasible solution. Any layout $x$ that violates a constraint is heavily penalized or discarded.
+	•	Constraint 1: Regulatory Retention ($g_1(x) \ge 0$) Based on the 2017 Turkish regulation 9 and the 25mm first flush standard.10 $$g_1(x) = V_{\text{GI, total}}(x) - V_{\text{runoff, 25mm}}(x) \ge 0$$  Where $V_{\text{GI, total}}$ is the total storage volume provided by the $x_{\text{GI}}$ layout, and $V_{\text{runoff, 25mm}}$ is the runoff volume calculated using the SCS-CN method (Part 1.1.2) for a 25mm storm ($P=25$) on the post-development layout.
+	•	Constraint 2: Spatial Constraints ($g_2(x)$) This enforces "no-build" zones.46 Buildings cannot be placed in pre-defined high-risk areas (e.g., the 10-year floodplain, existing river channels, or utility easements). $x_{\text{buildings}, i} = 0$ for all $i \in \text{No-Build Zone}$
+
+6.2 Solving: The Pareto Front and Trade-Offs
+
+A Multi-Objective Optimization (MOO) algorithm does not produce a single "best" solution. Instead, it produces a Pareto Front: a set of solutions that are all "non-dominated," meaning no solution is worse than another in all objectives.96
+This front visualizes the fundamental trade-offs for the planner.97 By plotting the solutions on a 3D scatter plot (Risk vs. Cost vs. Density), a planner can quantitatively answer questions like:
+	•	"What is the minimum cost ($f_2$) to achieve our target density ($f_3$) while keeping risk ($f_1$) below a certain threshold?"
+	•	"How much density ($f_3$) must we sacrifice to achieve a 50% reduction in risk ($f_1$)?"
+This directly confronts the "Safe Development Paradox".89 It moves the discussion from a vague conflict between safety and development 98 to a quantitative negotiation based on a set of optimized, feasible, and pre-vetted spatial plans.
+
+Part 7: Technical Implementation and Validation (The Deliverables)
+
+This section provides the core Python code for the fast fitness function and outlines the scientific workflow for validating the entire system using the Turkish case studies as benchmarks.
+
+7.1 Deliverable: Python-Based Flood Risk Fitness Function (<5s)
+
+This function is the core of the EA. It must be computationally lightweight, relying on pre-computed data and fast array operations. It assumes helper functions and data (e.g., hand_raster, cost_lookup) are pre-loaded into memory.
+Core Libraries: numpy 26, rasterio.26 The pre-computation of hand.tif uses pysheds.25
+
+Python
+
+
+import numpy as np import rasterio  # --- PRE-COMPUTED DATA (Loaded ONCE at startup) --- try:     with rasterio.open('hand.tif') as src:         # The Height Above Nearest Drainage raster (pre-computed)         HAND_RASTER = src.read(1)              with rasterio.open('no_build_zones.tif') as src:         # Binary mask of areas where buildings are forbidden (1=No Build)         NO_BUILD_MASK = src.read(1)  except FileNotFoundError:     print("Error: Required pre-computed raster files (hand.tif) not found.")     # Handle error appropriately      # --- Look-up Tables (Constants) --- # Costs per 5x5m cell for each GI type GI_COST_LOOKUP = {     0: 0,    # No GI     1: 500,  # Bioswale     2: 2500, # Permeable Pavement     3: 1000  # Rain Garden }  # Storage volume (m^3) per 5x5m cell for each GI type GI_VOLUME_LOOKUP = {     0: 0,     1: 2.5,  # 25m^2 * 0.1m effective depth     2: 7.5,  # 25m^2 * 0.3m sub-base depth     3: 10.0  # 25m^2 * 0.4m ponding/media depth }  # --- Helper Functions (Simplified for speed) ---  def _compute_required_retention(layout_buildings, layout_gi):     """     Calculates the required stormwater retention volume (m^3)     to meet the 25mm first flush regulatory constraint.     Uses a simplified SCS-CN method.     """     # 100x100 grid = 10,000 cells. 5x5m cells = 25m^2 area per cell.     # Total cells = 10,000. Total Area = 250,000 m^2          # Assign CN values     cn_roof = 98     cn_gi = 70  # Average for GI     cn_grass = 61 # Open space, good condition          num_cells_bldg = np.sum(layout_buildings)     num_cells_gi = np.sum(layout_gi > 0)     num_cells_grass = 10000 - num_cells_bldg - num_cells_gi          # Calculate composite CN     composite_cn = ( (num_cells_bldg * cn_roof) +                       (num_cells_gi * cn_gi) +                       (num_cells_grass * cn_grass) ) / 10000                           # Calculate S (in mm)     S = (25400 / composite_cn) - 254          # Calculate Ia (in mm)     Ia = 0.2 * S          # Calculate Runoff Pe (in mm) for a P=25mm storm     P = 25.0     if P <= Ia:         Pe_mm = 0     else:         Pe_mm = ((P - Ia)**2) / (P - Ia + S)              # Convert runoff depth (mm) to total volume (m^3)     # (Pe_mm / 1000) * (Total Area m^2)     total_area_m2 = 10000 * 25      required_volume_m3 = (Pe_mm / 1000.0) * total_area_m2     return required_volume_m3  def _compute_peak_q_to_stage(layout_buildings, layout_gi):     """     Calculates the 100-year peak flow (Q) and converts to flood stage (H).     Uses a simplified Rational Method (Q=CiA).     """     # 1. Composite Runoff Coefficient (C)     C_roof = 0.9     C_gi = 0.2     C_grass = 0.15          num_cells_bldg = np.sum(layout_buildings)     num_cells_gi = np.sum(layout_gi > 0)     num_cells_grass = 10000 - num_cells_bldg - num_cells_gi          composite_c = ( (num_cells_bldg * C_roof) +                      (num_cells_gi * C_gi) +                      (num_cells_grass * C_grass) ) / 10000          # 2. Get Intensity (i) and Area (A)     # For a 500x500m site, Tc is ~15 min.     # From a local IDF curve (e.g., Istanbul 100-year, 15-min):     i_mm_hr = 150.0 # Placeholder value (mm/hr)     i_m_s = i_mm_hr / (1000 * 3600) # Convert to m/s     total_area_m2 = 250000          # 3. Calculate Q = CiA     peak_q_m3s = composite_c * i_m_s * total_area_m2          # 4. Convert Q (m^3/s) to Stage (H, meters)     # This uses a pre-computed synthetic rating curve (e.g., Q = k * H^1.5)     # Solved for H: H = (Q / k)^(1/1.5)     # Placeholder k value for a typical outlet channel     k = 10      flood_stage_m = (peak_q_m3s / k)**(1/1.5)          return flood_stage_m  # --- MAIN FITNESS FUNCTION ---  def calculate_fitness(layout_buildings, layout_gi):     """     Computes the 3 objectives for a single spatial layout.     This function must execute in < 5 seconds.          Args:     layout_buildings (np.array): 100x100 binary grid (1=building)     layout_gi (np.array): 100x100 integer grid (0=none, 1=bioswale, etc.)          Returns:     tuple: (f1_risk, f2_cost, f3_density)     """          # --- 1. Check Constraints ---          # Constraint g1: Regulatory Retention (25mm first flush)     required_volume = _compute_required_retention(layout_buildings, layout_gi)     provided_volume = sum(GI_VOLUME_LOOKUP[gi_type] for gi_type in np.nditer(layout_gi))          if provided_volume < required_volume:         # Constraint violated: return "infinite" penalty         return (np.inf, np.inf, np.inf)      # Constraint g2: Spatial (No-Build Zones)     if np.any(layout_buildings * NO_BUILD_MASK):         # Constraint violated: return "infinite" penalty         return (np.inf, np.inf, np.inf)      # --- 2. Calculate Flood Stage (100-year storm) ---     flood_stage_m = _compute_peak_q_to_stage(layout_buildings, layout_gi)          # --- 3. Objective 1: Minimize Flood Risk (f1) ---     # Fast numpy array operations     inundation_depth = np.maximum(0, flood_stage_m - HAND_RASTER)     depth_at_buildings = inundation_depth * layout_buildings     f1_risk = np.sum(depth_at_buildings) # Total summed flood depth (m) at buildings          # --- 4. Objective 2: Minimize GI Cost (f2) ---     f2_cost = sum(GI_COST_LOOKUP[gi_type] for gi_type in np.nditer(layout_gi))          # --- 5. Objective 3: Maximize Development Density (f3) ---     # We MINIMIZE the NEGATIVE of density     f3_density_objective = -1 * np.sum(layout_buildings)          return (f1_risk, f2_cost, f3_density_objective) 
+
+7.2 High-Fidelity Validation Workflow (The "Turkish Triad")
+
+The fast proxy model is an approximation. To ensure its results are scientifically defensible, a three-step validation against high-fidelity models and real-world events is required.
+
+7.2.1 Step 1: Calibrate High-Fidelity Model (SWMM/HEC-RAS)
+
+	•	Tool: pyswmm 15 or HEC-RAS.99
+	•	Method: A detailed SWMM model is built for the Ayamama watershed (or a similar validation site).
+	•	Validation Event: The September 2009 Ayamama flood.
+	•	Target: The model parameters (e.g., roughness, infiltration) are calibrated until the simulation accurately reproduces the observed outcomes of the 2009 flood: specifically, the ~11 meter flood depths and 1,200 meter inundation extent documented in post-flood analysis.80
+
+7.2.2 Step 2: Validate the Fast Proxy (HAND)
+
+	•	Method: The calibrated high-fidelity model (from Step 1) is now run using the 100-year design storm to generate a "ground truth" 2D inundation depth map ($Map_{HF}$). This $Map_{HF}$ is compared to the inundation map generated by the fast proxy model ($Map_{FP}$), which uses the HAND raster and the synthetic rating curve.
+	•	Comparison: The spatial fit of the two maps is quantified. Studies comparing low-complexity models (like HAND) to HEC-RAS 2D have found them to be "reasonably good" 34, though they can overestimate depth 34 or underestimate extent.34 This step quantifies the error and bias of the fast fitness function, which is critical for understanding the final optimization results.
+
+7.2.3 Step 3: Validate the Final Optimized Solution
+
+	•	Method:
+	•	The full MOO (Part 6) is run using the fast HAND proxy (Part 7.1) to generate a Pareto front of optimal layouts.
+	•	A preferred solution (e.g., a "balanced" design) is selected from this front.
+	•	This specific layout (building footprints, GI locations) is then built in the slow, calibrated SWMM model (using pyswmm to modify the model's subcatchments and LID controls 17).
+	•	The 100-year design storm is simulated in SWMM on this final, optimized layout.
+	•	Validation: The results are checked against two benchmarks:
+	•	Does the SWMM simulation confirm the low flood risk predicted by the fast proxy?
+	•	Does the solution meet or exceed the performance benchmarks for LID in that watershed? For Ayamama, the target is the 56.02% peak runoff reduction for a 10-year storm achieved by LID combinations in the 2020 study.32 This final step closes the loop, confirming that an optimized design selected via a fast proxy holds up under a rigorous, high-fidelity simulation.
+
+Part 8: State-of-the-Art (2020-2025) and Future Directions
+
+The field of flood modeling and optimization is advancing rapidly, driven by machine learning and a focus on climate adaptation.
+
+8.1 Advances in ML for Flood Prediction
+
+The use of Deep Learning (DL) for rapid flood mapping is a primary research frontier.100 The most promising approach involves using Convolutional Neural Networks (CNNs) to learn the complex spatial relationships of flooding.57 Researchers are training CNNs (often U-Net architectures 58) using synthetic training data: the inputs are spatial rasters (DEM, land use, rainfall), and the "ground truth" outputs are flood depth maps generated by thousands of 2D hydrodynamic model (e.g., LISFLOOD-FP) runs.56 This creates a surrogate model (as in Part 3.2) that can predict a full 2D flood map in seconds.58
+Research from this period also refines the data inputs: Digital Terrain Models (DTMs), which represent the bare earth, are shown to outperform Digital Surface Models (DSMs), which include buildings and trees.56 While higher-resolution DEMs (e.g., 15m) improve accuracy, coarser DEMs (e.g., 30m) are still considered highly viable for rapid prediction, especially in data-scarce regions.56
+
+8.2 Optimization of Green Infrastructure Networks
+
+Recent research focuses on tightly coupling hydraulic models with optimization algorithms. Studies from 2020-2025 describe frameworks that link SWMM directly to NSGA-II to optimize GI/LID placement for minimizing runoff and cost.91 One such study details a "Cost Optimization Framework for Implementing blue-Green infrastructure (CONFIGURE)" which integrates a high-resolution hydrodynamic model with NSGA-II to find the best cost-benefit trade-offs.104 This is a move toward more computationally intensive but accurate optimization, often aided by GIS-based pre-analysis to identify priority zones for GI placement, thereby reducing the optimizer's search space.105
+
+8.3 Climate-Adaptive Stormwater Design and Nature-based Solutions (NbS)
+
+There is a strong consensus that "climate-adaptive" design is mandatory. This involves acknowledging that climate change renders historical rainfall data non-stationary and insufficient for future design.106 State-of-the-art practice involves using downscaled precipitation data from CMIP6 climate models (e.g., SSP2-4.5 and SSP5-8.5 scenarios) to drive hydrological models, ensuring the designs are resilient to future, more intense rainfall.103
+This has led to a focus on Nature-based Solutions (NbS)—a broad category including GI, constructed wetlands, and floodplain restoration.108 A significant body of research (2020-2025) has focused on quantifying NbS effectiveness. The consensus finding is that NbS are highly effective at mitigating frequent, smaller flood events (like the 25mm first flush) and providing co-benefits (water quality, habitat).108 However, their impact on extreme, rare events (like the 100-year flood) is often marginal unless implemented at a massive catchment scale.110
+This finding leads to a critical conclusion for resilient spatial planning: a hybrid "Blue-Green-Grey" 112 strategy is required. The optimization framework should use Green Infrastructure (GI/NbS) to meet regulatory and water quality goals (the 25mm storm). It must simultaneously use Spatial Planning (Avoidance)—by optimizing building placement away from high-risk HAND zones—and Grey Infrastructure (Detention) to manage the extreme 100-year flood. No single solution is sufficient; resilience is achieved through this optimized, multi-layered approach.
+Alıntılanan çalışmalar
+	•	Using the Rational Method to Determine Peak Flow, erişim tarihi Kasım 3, 2025, https://documents.iowa.gov/home/download/9592857
+	•	Appendix A-1: Runoff Peak Discharge Calculations - Maine.gov, erişim tarihi Kasım 3, 2025, https://www.maine.gov/dep/land/stormwater/stormwaterbmps/vol3/appendixa.pdf
+	•	Using the Rational Method - HydroCAD, erişim tarihi Kasım 3, 2025, https://www.hydrocad.net/rational.htm
+	•	erişim tarihi Kasım 3, 2025, https://www.hydrocad.net/rational.htm#:~:text=The%20Rational%20method%20predicts%20the,as%20consistent%20units%20are%20employed.
+	•	Runoff Coefficient (C) Fact Sheet - State Water Resources Control Board, erişim tarihi Kasım 3, 2025, https://www.waterboards.ca.gov/water_issues/programs/swamp/docs/cwt/guidance/513.pdf
+	•	Curve Number - Hydrologic Engineering Center, erişim tarihi Kasım 3, 2025, https://www.hec.usace.army.mil/confluence/rasdocs/ras1dtechref/6.4/overview-of-optional-capabilities/modeling-precipitation-and-infiltration/curve-number
+	•	ABSTRACT: The conceptual and empirical foundations of the runoff curve number method are reviewed. The, erişim tarihi Kasım 3, 2025, https://www.uvm.edu/~bwemple/HydroModel/ponce1996.pdf
+	•	SCS Curve Number Loss Model - Hydrologic Engineering Center, erişim tarihi Kasım 3, 2025, https://www.hec.usace.army.mil/confluence/hmsdocs/hmstrm/canopy-surface-infiltration-and-runoff-volume/infiltration/scs-curve-number-loss-model
+	•	Urban Drainage Design According to Turkish Rainwater Harvesting and Disposal Guideline - DergiPark, erişim tarihi Kasım 3, 2025, https://dergipark.org.tr/tr/download/article-file/1269262
+	•	Chapter 6 Stormwater Management Requirements - City of London, erişim tarihi Kasım 3, 2025, https://london.ca/sites/default/files/2024-07/2024_dsrm_ch06_stormwater_management.pdf
+	•	Storm Water Management Model Reference Manual Volume I – Hydrology (Revised) - TUFLOW, erişim tarihi Kasım 3, 2025, https://downloads.tuflow.com/SWMM/SWMM5_Reference_Manual_Volume1_Hydrology_P100NYRA.pdf
+	•	Storm Water Management Model (SWMM) | US EPA, erişim tarihi Kasım 3, 2025, https://www.epa.gov/water-research/storm-water-management-model-swmm
+	•	Storm Water Management Model User's Manual Version 5.1 - EPA, erişim tarihi Kasım 3, 2025, https://www.epa.gov/sites/default/files/2019-02/documents/epaswmm5_1_manual_master_8-2-15.pdf
+	•	Comparing SWMM and HEC-RAS Hydrological Modeling Performance in Semi-Urbanized Watershed - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2073-4441/17/9/1331/review_report
+	•	Intelligent control of combined sewer systems using PySWMM—A Python wrapper for EPA's Stormwater Management Model - PubMed Central, erişim tarihi Kasım 3, 2025, https://pmc.ncbi.nlm.nih.gov/articles/PMC11998929/
+	•	Tutorial - pyswmm, erişim tarihi Kasım 3, 2025, https://www.pyswmm.org/tutorial
+	•	pyswmm, erişim tarihi Kasım 3, 2025, https://www.pyswmm.org/
+	•	Flow Direction (Spatial Analyst)—ArcGIS Pro | Documentation, erişim tarihi Kasım 3, 2025, https://pro.arcgis.com/en/pro-app/latest/tool-reference/spatial-analyst/flow-direction.htm
+	•	Flow Direction (Raster Analysis)—ArcGIS Pro | Documentation, erişim tarihi Kasım 3, 2025, https://pro.arcgis.com/en/pro-app/latest/tool-reference/raster-analysis/flow-direction.htm
+	•	When computing flow direction, the D8 algorithm is used - are there major differences if others are used?, erişim tarihi Kasım 3, 2025, https://gis.stackexchange.com/questions/92081/when-computing-flow-direction-the-d8-algorithm-is-used-are-there-major-differ
+	•	Comparison of Flow Direction Algorithms in the Application of the CTI for Mapping Wetlands in Minnesota - LCCMR (mn.gov), erişim tarihi Kasım 3, 2025, https://www.lccmr.mn.gov/projects/2010/finals/2010_03b_rpt_cti-mapping-wetlands.pdf
+	•	Flow direction | pysheds - Matt D. Bartos, erişim tarihi Kasım 3, 2025, http://mattbartos.com/pysheds/flow-directions.html
+	•	Geographic Information Systems in Water ... - David Tarboton, erişim tarihi Kasım 3, 2025, https://hydrology.usu.edu/dtarb/CUAHSIVirtualUniversity/2019/ProgrammingHANDExercise.pdf
+	•	AlexLipp/FlowAccum: Cython implementation of D8 FlowAccumulation on a grid - GitHub, erişim tarihi Kasım 3, 2025, https://github.com/AlexLipp/FlowAccum
+	•	Pysheds: A Fast, Open-source Digital Elevation Model Processing Library - ESIP, erişim tarihi Kasım 3, 2025, https://www.esipfed.org/pysheds-a-fast-open-source-digital-elevation-model-processing-library/
+	•	Raster data handling with Python - WUR Geoscripting, erişim tarihi Kasım 3, 2025, https://geoscripting-wur.github.io/PythonRaster/
+	•	3 Spatial data operations - Geocomputation with Python, erişim tarihi Kasım 3, 2025, https://py.geocompx.org/03-spatial-operations
+	•	Floods: Recurrence intervals and 100-year floods | U.S. Geological Survey - USGS.gov, erişim tarihi Kasım 3, 2025, https://www.usgs.gov/centers/new-jersey-water-science-center/floods-recurrence-intervals-and-100-year-floods
+	•	Best Practices for Using IDF Curves - ClimateData.ca, erişim tarihi Kasım 3, 2025, https://climatedata.ca/resource/best-practices-for-using-idf-curves/
+	•	Generation of Rainfall Intensity-Duration-Frequency curves for the Barak River Basin Violina Basumatary, Briti Sundar Sil, erişim tarihi Kasım 3, 2025, https://www.mhwm.pl/pdf-79175-15962?filename=15962.pdf
+	•	Rainfall Statistics, Intensity-Duration-Frequency (IDF) Curves - Part 1 - YouTube, erişim tarihi Kasım 3, 2025, https://www.youtube.com/watch?v=JXSwKmfMZJo
+	•	Investigation of the low impact development strategies for highly ..., erişim tarihi Kasım 3, 2025, https://iwaponline.com/wst/article/84/9/2194/84443/Investigation-of-the-low-impact-development
+	•	FloodStroem: A fast dynamic GIS-based urban flood and damage ..., erişim tarihi Kasım 3, 2025, https://orbit.dtu.dk/files/247500324/1_s2.0_S0022169421005680_main_1_.pdf
+	•	Comparison of new generation low-complexity flood inundation ..., erişim tarihi Kasım 3, 2025, https://repository.library.noaa.gov/view/noaa/57664/noaa_57664_DS1.pdf
+	•	Flood Risk Prediction and Management by Integrating GIS and HEC-RAS 2D Hydraulic Modelling: A Case Study of Ungheni, Iasi County, Romania - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2073-4441/17/20/2959
+	•	Modeling the effect of urbanization on flood risk in Ayamama Watershed, Istanbul, Turkey, using the MIKE 21 FM model - IDEAS/RePEc, erişim tarihi Kasım 3, 2025, https://ideas.repec.org/a/spr/nathaz/v99y2019i2d10.1007_s11069-019-03794-y.html
+	•	Kinematic Wave Transform Model - Hydrologic Engineering Center, erişim tarihi Kasım 3, 2025, https://www.hec.usace.army.mil/confluence/hmsdocs/hmstrm/transform/kinematic-wave-transform-model
+	•	Flow Routing Methods - CivilGEO Knowledge Base, erişim tarihi Kasım 3, 2025, https://knowledge.civilgeo.com/flow-routing-methods/
+	•	Flood inundation mapping and evaluation software configured to work with U.S. National Water Model. - GitHub, erişim tarihi Kasım 3, 2025, https://github.com/NOAA-OWP/inundation-mapping
+	•	passaH2O/GeoFlood: Flood mapping program based on high-resolution terrain analyses - GitHub, erişim tarihi Kasım 3, 2025, https://github.com/passaH2O/GeoFlood
+	•	Building-scale flood loss estimation through vulnerability pattern characterization - NHESS, erişim tarihi Kasım 3, 2025, https://nhess.copernicus.org/articles/22/3543/2022/nhess-22-3543-2022.pdf
+	•	Flood Risk Assessment of Buildings Based on Vulnerability Curve: A Case Study in Anji County - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2073-4441/14/21/3572
+	•	Flood Risk Mitigation by Spatial Planning—Lessons Learned From Municipal Consultation - PreventionWeb.net, erişim tarihi Kasım 3, 2025, https://www.preventionweb.net/media/106750/download
+	•	A Fast Data-Driven Tool for Flood Risk Assessment in Urban Areas - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2306-5338/9/8/147
+	•	Assess Vulnerability and Risk | U.S. Climate Resilience Toolkit, erişim tarihi Kasım 3, 2025, https://toolkit.climate.gov/assess-vulnerability-and-risk
+	•	Construction in Flood Zones: Risks & Smart Solutions - GDI Engineering, erişim tarihi Kasım 3, 2025, https://gdiengdesign.com/building-in-flood-zones-and-rising-seas/
+	•	asf_tools v0.8.3 API Reference - HyP3, erişim tarihi Kasım 3, 2025, https://hyp3-docs.asf.alaska.edu/tools/asf_tools_api/
+	•	Pyshed - Doc For Python Library | PDF | Computer Programming - Scribd, erişim tarihi Kasım 3, 2025, https://www.scribd.com/document/506049814/pyshed-doc-for-Python-Library
+	•	pysheds | Simple and fast watershed delineation in python - Matt D. Bartos, erişim tarihi Kasım 3, 2025, http://mattbartos.com/pysheds/
+	•	Inundation mapping with HAND | pysheds - Matt D. Bartos, erişim tarihi Kasım 3, 2025, http://mattbartos.com/pysheds/hand.html
+	•	Rapid CFD Prediction Based on Machine Learning Surrogate Model in Built Environment: A Review - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2311-5521/10/8/193
+	•	Delft University of Technology Machine Learning-Based Surrogate Modeling for Urban Water Networks Review and Future Research Directions, erişim tarihi Kasım 3, 2025, https://research.tudelft.nl/files/125478848/Water_Resources_Research_2022_Garz_n_Machine_Learning_Based_Surrogate_Modeling_for_Urban_Water_Networks_Review_and.pdf
+	•	Procedural generation of flood-sensitive urban layouts - CS@Purdue, erişim tarihi Kasım 3, 2025, https://www.cs.purdue.edu/cgvlab/www/resources/papers/Mustafa-Environment_and_Planning_B-2018-Procedural_generation_of_Flood_Sensitive_Urban_layouts.pdf
+	•	A deep convolutional neural network model for rapid prediction of fluvial flood inundation - Heriot-Watt Research Portal, erişim tarihi Kasım 3, 2025, https://researchportal.hw.ac.uk/files/42332792/MS_Revised_1_.pdf
+	•	Making predictions - Decision Forests - TensorFlow, erişim tarihi Kasım 3, 2025, https://www.tensorflow.org/decision_forests/tutorials/predict_colab
+	•	[2309.13360] Impacts of DEM Type and Resolution on Deep Learning-Based Flood Inundation Mapping - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/abs/2309.13360
+	•	A Deep Learning Framework for Flash-Flood-Runoff Prediction: Integrating CNN-RNN with Neural Ordinary Differential Equations (ODEs) - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2073-4441/17/9/1283
+	•	Flood Water Depth Prediction with Convolutional Temporal Attention Networks - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2073-4441/16/9/1286
+	•	Predicting the Flood Risk of a Region Using Convolutional Neural Networks and Satellite Images - NHSJS, erişim tarihi Kasım 3, 2025, https://nhsjs.com/2024/predicting-the-flood-risk-of-a-region-using-convolutional-neural-networks-and-satellite-images/
+	•	TensorFlow Tutorial 8 - Make Predictions Using the Model - YouTube, erişim tarihi Kasım 3, 2025, https://www.youtube.com/watch?v=nDPU8n2b4RM
+	•	Green infrastructure in the Great Lakes—Assessment of performance, barriers, and unintended consequences - USGS Publications Warehouse, erişim tarihi Kasım 3, 2025, https://pubs.usgs.gov/publication/cir1496/full
+	•	Runoff Volume Reduction Using Green Infrastructure - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2073-445X/10/3/297
+	•	Performance of Green Infrastructure | US EPA, erişim tarihi Kasım 3, 2025, https://19january2021snapshot.epa.gov/green-infrastructure/performance-green-infrastructure_.html
+	•	Stormwater Treatment Process Quantitative Evaluation - State Water Resources Control Board, erişim tarihi Kasım 3, 2025, https://www.waterboards.ca.gov/water_issues/programs/stormwater/storms/docs/stormwater-treatment-process-quantitative-evaluation.pdf
+	•	Green Infrastructure - Wisconsin DNR, erişim tarihi Kasım 3, 2025, https://dnr.wisconsin.gov/sites/default/files/topic/Stormwater/MS4/Green%20Infrastructure%20for%20Municpal%20and%20Parcel%20Scale.pdf
+	•	Resilience & Sustainability - Unused Content - Green Infrastructure - City of New Orleans, erişim tarihi Kasım 3, 2025, https://nola.gov/next/resilience-sustainability/unused-content/green-infrastructure-en/
+	•	A field study to evaluate the runoff quantity and stormwater retention of a typical exten-sive green roof in Bahçeköy, Istanbul | Request PDF - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/340469624_A_field_study_to_evaluate_the_runoff_quantity_and_stormwater_retention_of_a_typical_exten-sive_green_roof_in_Bahcekoy_Istanbul
+	•	Constructed Stormwater Wetland, erişim tarihi Kasım 3, 2025, https://opcgis.deq.state.ms.us/Erosion_Stormwater_Manual_2ndEd/Volume2/V2_Chap4_6_Ret_Detent.pdf
+	•	Green Infrastructure Design Manual - Port Authority, erişim tarihi Kasım 3, 2025, https://www.panynj.gov/content/dam/port-authority/pdfs/-available-engineering-documents/PANYNJ-Green-Infrastructure-Design-Manual.pdf
+	•	NJ Stormwater Best Management Practices Manual - NJDEP - NJ.gov, erişim tarihi Kasım 3, 2025, https://dep.nj.gov/stormwater/bmp-manual/
+	•	a handbook of constructed wetlands | epa, erişim tarihi Kasım 3, 2025, https://www.epa.gov/sites/default/files/2015-10/documents/constructed-wetlands-handbook.pdf
+	•	Blue/Green Stormwater Infrastructure - SPC Water Resource Center Webinar, erişim tarihi Kasım 3, 2025, https://spcwater.org/wp-content/uploads/2021/07/2021_7_29_SPC-Webinar-BlueGreenInfrastructure_Optimized.pdf
+	•	Stormwater & Green Infrastructure - Home - City of New Orleans, erişim tarihi Kasım 3, 2025, https://nola.gov/next/stormwater-green-infrastructure/home/
+	•	NJ Stormwater BMP Manual Chapter 11.2 Extended Detention Basins (Non-GI), Updated March 2021 - NJDEP, erişim tarihi Kasım 3, 2025, https://dep.nj.gov/wp-content/uploads/stormwater/bmp/nj_swbmp_11.2-extended-detention-basins.pdf
+	•	Drainage & Stormwater Control | NYC Street Design Manual, erişim tarihi Kasım 3, 2025, https://www.nycstreetdesign.info/geometry/drainage-stormwater-control
+	•	Urban flash flood vulnerability: spatial assessment and adaptation - a case study in Istanbul, Turkey, erişim tarihi Kasım 3, 2025, https://research.utwente.nl/en/publications/urban-flash-flood-vulnerability-spatial-assessment-and-adaptation
+	•	flood hazard assessment for alibeyköy watershed in istanbul with mike nam and mike 21, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/361283923_FLOOD_HAZARD_ASSESSMENT_FOR_ALIBEYKOY_WATERSHED_IN_ISTANBUL_WITH_MIKE_NAM_AND_MIKE_21
+	•	Green Infrastructure and Flood Resilience in Fatih, Istanbul - TU Delft Repository, erişim tarihi Kasım 3, 2025, https://repository.tudelft.nl/file/File_0477bbaa-7a8a-473c-8af3-01bc87ec1a22
+	•	Flood Modeling of Ayamama River Watershed in Istanbul, Turkey ..., erişim tarihi Kasım 3, 2025, https://ascelibrary.org/doi/abs/10.1061/%28ASCE%29HE.1943-5584.0001730
+	•	Flood modeling of Ayamama River watershed in Istanbul, Turkey - ClimaHealth, erişim tarihi Kasım 3, 2025, https://climahealth.info/resource-library/flood-modeling-of-ayamama-river-watershed-in-istanbul-turkey/
+	•	(PDF) Water security challenges of Ankara City in Turkey: Lessons from climate change impact and the COVID‐19 pandemic - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/369047077_Water_security_challenges_of_Ankara_City_in_Turkey_Lessons_from_climate_change_impact_and_the_COVID-19_pandemic
+	•	Ankara Green City Action Plan - Arup, erişim tarihi Kasım 3, 2025, https://www.arup.com/en-us/projects/ankara-green-city-action-plan/
+	•	Navigating Water Challenges in Urban Spaces: Green Stormwater Infrastructure, erişim tarihi Kasım 3, 2025, https://www.napawatersheds.org/files/managed/Document/15748/02%20-%20Peter%20Schultze-Allen.pdf
+	•	Stormwater Management and Green Infrastructure Techniques for Sustainable Campus Design Sürdürülebilir Kampüs Tasarımı iç - DergiPark, erişim tarihi Kasım 3, 2025, https://dergipark.org.tr/en/download/article-file/385605
+	•	(PDF) Urban Drainage Design According to Turkish Rainwater Harvesting and Disposal Guideline - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/335149599_Urban_Drainage_Design_According_to_Turkish_Rainwater_Harvesting_and_Disposal_Guideline
+	•	Impacts of Climate Change on Extreme Climate Indices in Türkiye Driven by High-Resolution Downscaled CMIP6 Climate Models - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2071-1050/15/9/7202
+	•	EXPLORING THE IMPACTS OF CLIMATE CHANGE ON EXTREME CLIMATE INDICES IN TÜRKİYE: INSIGHTS FROM STATISTICALLY DOWNSCALED CMIP6 MO - Open METU, erişim tarihi Kasım 3, 2025, https://open.metu.edu.tr/bitstream/handle/11511/105612/BerkinG%C3%BCm%C3%BC%C5%9F_MSc_Thesis_son.pdf
+	•	The Safe Development Paradox in Flood Risk Management: A Critical Review - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2071-1050/14/24/16955
+	•	Sustainable and Resilient Land Use Planning: A Multi-Objective Optimization Approach, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2220-9964/13/3/99
+	•	Optimization of Low Impact Development Layouts for Urban Stormwater Management: A Simulation-Based Approach Using Multi-Objective Scatter Search Algorithm - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2073-4441/17/6/840
+	•	Multi-objective Spatial Optimization of Green Infrastructure Based on NSGA-Ⅱ Algorithm, erişim tarihi Kasım 3, 2025, http://www.lalavision.com/en/article/doi/10.3724/j.fjyl.202306160277
+	•	Spatial Optimization of Future Urban Development with Regards to Climate Risk and Sustainability Objectives - PMC - PubMed Central, erişim tarihi Kasım 3, 2025, https://pmc.ncbi.nlm.nih.gov/articles/PMC6849589/
+	•	Minimizing flood damage by optimizing the placement of precautionary measures using genetic algorithms - JKU ePUB, erişim tarihi Kasım 3, 2025, https://epub.jku.at/obvulihs/download/pdf/12332960
+	•	Identifying Cost-Effective Low-Impact Development (LID) under Climate Change: A Multi-Objective Optimization Approach - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2073-4441/14/19/3017
+	•	Evolutionary Computing for Multi-Objective Sustainable Urban Spatial Planning, erişim tarihi Kasım 3, 2025, https://isprs-archives.copernicus.org/articles/XLVIII-4-W10-2024/21/2024/isprs-archives-XLVIII-4-W10-2024-21-2024.pdf
+	•	Optimization of urban spatial development against flooding and other climate risks, and wider sustainability objectives - Semantic Scholar, erişim tarihi Kasım 3, 2025, https://pdfs.semanticscholar.org/3288/ff1393abd4ecf48f3c08bfb921ded43acade.pdf
+	•	How Do Urban Planning And Infrastructure Choices Impact Flood Risks In A Given Area?, erişim tarihi Kasım 3, 2025, https://medium.com/@paul_15500/how-do-urban-planning-and-infrastructure-choices-impact-flood-risks-in-a-given-area-01173af2fcb8
+	•	Urban flood risk analysis of buildings using HEC-RAS 2D in climate change framework, erişim tarihi Kasım 3, 2025, https://iwaponline.com/h2open/article/4/1/262/84437/Urban-flood-risk-analysis-of-buildings-using-HEC
+	•	arXiv:2501.06907v1 [cs.LG] 12 Jan 2025, erişim tarihi Kasım 3, 2025, https://arxiv.org/pdf/2501.06907
+	•	Climate Adaptation-Aware Flood Prediction for Coastal Cities Using Deep Learning - EGUsphere, erişim tarihi Kasım 3, 2025, https://egusphere.copernicus.org/preprints/2025/egusphere-2025-838/egusphere-2025-838.pdf
+	•	A Comprehensive Survey on Deep Learning Solutions for 3D Flood Mapping - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2506.13201v1
+	•	Green Stormwater Infrastructure (GSI) Performance Assessment for Climate Change Resilience in Storm Sewer Network - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2073-4441/17/17/2510
+	•	[2310.13989] Multi-objective Optimisation Framework for Blue-Green Infrastructure Placement Using Detailed Flood Model - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/abs/2310.13989
+	•	Urban Planning with Rational Green Infrastructure Placement Using a Critical Area Detection Method - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2673-7418/4/3/14
+	•	UCANR: The impact of climate change on stormwater management - Maven's Notebook, erişim tarihi Kasım 3, 2025, https://mavensnotebook.com/2025/07/18/ucanr-the-impact-of-climate-change-on-stormwater-management/
+	•	Full article: Nature-based solutions: an effective approach for flood mitigation and resilience in the Quad Cities in future climate, erişim tarihi Kasım 3, 2025, https://www.tandfonline.com/doi/full/10.1080/02626667.2025.2564349?src=exp-la
+	•	A bibliometric analysis and overview of the effectiveness of Nature-based Solutions in catchment scale flood mitigation - The Australian National University, erişim tarihi Kasım 3, 2025, https://researchportalplus.anu.edu.au/en/publications/a-bibliometric-analysis-and-overview-of-the-effectiveness-of-natu
+	•	Global Program on Nature-Based Solutions for Climate Resilience: Homepage, erişim tarihi Kasım 3, 2025, https://www.naturebasedsolutions.org/
+	•	Selection, Planning, and Modelling of Nature-Based Solutions for Flood Mitigation - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2073-4441/16/19/2802
+	•	Effectiveness of Nature-Based Solutions in Mitigating Flood Hazard in a Mediterranean Peri-Urban Catchment - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2073-4441/12/10/2893
+	•	Urban green spaces and flood disaster management: toward sustainable urban design - PMC - PubMed Central, erişim tarihi Kasım 3, 2025, https://pmc.ncbi.nlm.nih.gov/articles/PMC12021837/

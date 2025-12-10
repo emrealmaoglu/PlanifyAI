@@ -1,0 +1,342 @@
+
+
+A Quantitative Analysis of Simulated Annealing Cooling Schedules for Spatial Optimization Problems
+
+Simulated Annealing (SA) is a powerful metaheuristic technique for approximating the global optimum in large, complex search spaces.1 It is particularly well-suited for NP-hard spatial optimization problems, such as facility layout, land use planning, and network routing, which are characterized by a vast number of combinatorial possibilities and numerous local optima.1 The SA algorithm, inspired by the metallurgical process of annealing, avoids entrapment in local minima by probabilistically accepting "worse" solutions (i.e., configurations with a higher cost).4
+This probabilistic acceptance is governed by the Metropolis criterion, where the probability $P$ of accepting a move that increases the energy (cost) by $\Delta E$ is given by $P(\Delta E, T) = \exp(-\Delta E / T)$.6 The "temperature" $T$ is the critical control parameter. At high $T$, the probability of accepting worse moves is high, allowing for a broad, random exploration of the solution space. As $T$ decreases, the acceptance probability for worse moves drops, and the algorithm transitions from exploration to a "greedy" exploitation of the most promising solution basin.8
+The efficacy of the entire SA process is therefore almost entirely dependent on the cooling schedule—the algorithm that dictates the initial temperature $T_0$, the rate of temperature decrease, and the number of iterations performed at each temperature step.9 A schedule that cools too quickly will "freeze" the system in a suboptimal local minimum, while one that cools too slowly results in prohibitive computational time.10
+This report provides a quantitative comparison of classical and adaptive cooling schedules for spatial optimization problems. It analyzes their mathematical formulations, theoretical convergence properties, and empirical performance. The report culminates in specific, actionable recommendations for a large-scale campus planning problem.
+
+1. Analysis of Classical Cooling Schedules
+
+Classical schedules are "static" in that the temperature at iteration $k$, $T(k)$, is a pre-defined function of $k$. These schedules are simple to implement but are "blind" to the specific topology of the problem landscape they are traversing.
+
+1.1 The Exponential (Geometric) Schedule
+
+This is the most common and practically successful classical schedule.11
+Mathematical Formula: The temperature is reduced by a constant factor $\alpha$ at each step $k$.$$T(k) = T_0 \cdot \alpha^k$$Here, $T_0$ is the initial temperature and $\alpha$ is the cooling rate, typically in the range of $0.8 \le \alpha < 1.0$.11
+Convergence and Performance: This schedule does not guarantee convergence to the global optimum.10 Its performance is highly sensitive to the choice of $\alpha$.
+A "fast" cooling rate (e.g., $\alpha = 0.8$) results in rapid convergence but significantly increases the risk of premature convergence to a poor local minimum.11
+A "slow" cooling rate (e.g., $\alpha = 0.95$ or $\alpha = 0.99$) allows for far more exploration and is more robust for complex problems, but at the cost of a much longer runtime.11The key weakness of this schedule is its "blindness"; it cools at the same rate regardless of whether the search is on a flat plain or in a complex, "bumpy" region of local optima.
+Python Implementation:Python# : Exponential (Geometric) Coolingdef exponential_cooling(T_start, alpha, iteration):    """ Calculate the temperature using an exponential (geometric) schedule. """    return T_start * (alpha ** iteration)
+
+1.2 The Linear Schedule
+
+This schedule decreases the temperature by a fixed amount $\beta$ at each step.
+Mathematical Formula:$$T(k) = T_0 - k \cdot \beta$$where $\beta$ is a small positive constant.11
+Convergence and Performance: This schedule is generally considered to be one of the worst-performing schedules.11 It has no convergence guarantee.10 Its primary drawback is that it can cool too slowly at high temperatures (wasting iterations) and too quickly at low temperatures (premature convergence). Furthermore, if the number of iterations is not perfectly tuned, the temperature can reach $T=0$ prematurely, effectively halting the search and trapping the algorithm.11
+Python Implementation:Python# : Linear Coolingimport mathdef linear_cooling(T_start, beta, iteration):    """ Calculate the temperature using a linear cooling schedule. """    T_new = T_start - beta * iteration    return max(T_new, 1e-8) # Ensure temperature does not go below (or to) zero
+
+1.3 The Logarithmic (Boltzmann) Schedule
+
+This schedule is of immense theoretical importance but limited practical use.
+Mathematical Formula:$$T(k) = \frac{C}{\log(1 + k)}$$where $C$ is a constant, often set to the initial temperature $T_0$.10
+Convergence and Performance: This is the only classical schedule with a rigorous mathematical proof (Geman & Geman, 1984) of asymptotic convergence to the global optimum, on the condition that the number of iterations $k$ approaches infinity.10However, this schedule is universally recognized as impractically slow.10 The temperature decreases so gradually that the computational time required to reach a low temperature is non-viable for any non-trivial problem. In one empirical study, $T_0$ for this schedule had to be set to 1 (versus 1,000 for all others) simply because it is so slow.10 Therefore, it serves as a theoretical benchmark against which other, more efficient schedules are measured, rather than as a practical algorithm.
+Python Implementation:Python# : Logarithmic (Boltzmann) Coolingimport mathdef logarithmic_cooling(T_start_or_C, iteration):    """ Calculate the temperature using a logarithmic (Boltzmann) schedule. """    # C is the constant, often set as T_start    return T_start_or_C / (1e-8 + math.log(1 + iteration))
+
+1.4 The Cauchy (Fast) Schedule
+
+This schedule is derived from a variant known as Fast Simulated Annealing (FSA).
+Mathematical Formula:$$T(k) = \frac{T_0}{1 + k}$$This schedule (or the similar $T(k) = T_0/k$) cools faster than the logarithmic schedule but slower than the exponential one.10
+Convergence and Performance: FSA pairs this schedule with a Cauchy-based probability distribution for generating new states. This allows for occasional long-distance "jumps" even at low temperatures, which can improve exploration. However, as a standalone schedule, it offers no convergence guarantees.10 Empirical data suggests it performs very poorly in finite time, as it cools too quickly to adequately explore the search space.19
+Python Implementation:Python# [18]: Cauchy (Fast) Coolingdef cauchy_fast_cooling(T_start, iteration):    """ Calculate the temperature using a fast (Cauchy) schedule. """    # iteration 'k' typically starts from 1, or use (iteration + 1)    return T_start / (1.0 + iteration)
+
+Table 1: Comparative Analysis of Classical Cooling Schedules
+
+
+Schedule
+Formula T(k)
+Typical Parameters
+Theoretical Convergence
+Practical Performance (Speed vs. Quality)
+Exponential
+$T(k) = T_0 \cdot \alpha^k$
+$\alpha \in [0.8, 0.99]$
+None.
+Fast, but sensitive to $\alpha$. High $\alpha$ (e.g., 0.99) is slow but robust. Low $\alpha$ (e.g., 0.8) is fast but risks local minima.
+Linear
+$T(k) = T_0 - k \cdot \beta$
+$\beta > 0$
+None.
+Poor. Can reach $T=0$ prematurely. Inefficient cooling profile.11
+Logarithmic
+$T(k) = C / \log(1 + k)$
+$C = T_0$
+Provably converges to global optimum as $k \to \infty$.10
+Impractically slow. A theoretical benchmark, not a viable algorithm.10
+Cauchy (Fast)
+$T(k) = T_0 / (1 + k)$
+$T_0$
+None.
+Very Fast, but poor quality. Tends to cool too aggressively, "freezing" the solution in a poor state.19
+
+2. Adaptive Cooling Schedules and Reheating Strategies
+
+Adaptive schedules are dynamic, feedback-based approaches that modify the temperature $T$ or the number of iterations $L$ based on the state of the search. They are "aware" of the problem landscape, allowing them to cool slowly in complex regions and quickly in simple ones.
+
+2.1 Fitness Variance-Based Cooling (Specific Heat)
+
+This is one of the most effective adaptive strategies. It uses the variance of the cost function at a given temperature as its feedback signal.20
+Algorithmic Principle: In statistical mechanics, the variance of energy at a fixed temperature is analogous to the "specific heat" ($C_H$) of the system.20$$C_H(T) = \frac{\langle E^2 \rangle - \langle E \rangle^2}{T^2} = \frac{\sigma^2(T)}{T^2}$$A high specific heat (high variance) signifies a "phase transition".20 In spatial optimization, a phase transition corresponds to a rugged, highly multimodal region of the search space where many good and bad solutions are in close proximity.
+Update Rule: The algorithm must navigate these phase transitions very carefully to avoid getting trapped.21
+If $C_H(T)$ is high, the landscape is "rough." The algorithm must cool slower to allow the Markov chain to reach equilibrium and properly explore this complex region.20
+If $C_H(T)$ is low, the landscape is a "smooth" basin. The algorithm can cool faster without risk.22
+Adaptive Formula: A common implementation of this (from Huang et al.) updates the temperature between steps $j$ and $j+1$ based on the standard deviation of costs $\sigma(T_j)$ at the current temperature:$$T_{j+1} = T_j \cdot \exp\left(-\frac{\alpha_0 T_j}{\sigma(T_j)}\right)$$In this formula, when the variance $\sigma(T_j)$ is high, the exponent becomes very small (close to 0), causing $\exp(...) \approx 1$. This results in $T_{j+1} \approx T_j$, which automatically and drastically slows down the cooling process during the critical phase transition.20
+Conceptual Python Implementation:Pythonimport numpy as npdef adaptive_cooling_specific_heat(T_current, costs_at_T, alpha_nought=0.95):    """    Updates temperature based on the variance (specific heat) of costs        """    if len(costs_at_T) < 2:        # Not enough data, use simple geometric        return T_current * alpha_nought    std_dev = np.std(costs_at_T)    # Avoid division by zero and stabilize    if std_dev < 1e-6:        std_dev = 1e-6     # T_new = T_current * exp(- (alpha_0 * T_current) / std_dev)    exponent = - (alpha_nought * T_current) / std_dev    T_new = T_current * np.exp(exponent)    # Ensure cooling is not too aggressive, but still cools    return min(T_new, T_current * 0.99)
+
+2.2 Acceptance Ratio-Based Control
+
+While sometimes discussed as a cooling schedule, this method's primary and most effective use is as an adaptive heuristic for setting the initial temperature $T_0$.
+Algorithmic Principle: The goal is to find a $T_0$ that is "hot" enough to allow for broad exploration. This is defined as a $T_0$ that produces a high initial acceptance ratio, $\chi_0$, typically 80% or higher.7
+Update Rule (for $T_0$): This is not a cooling schedule, but a pre-run calibration loop:
+Start with a low temperature (e.g., $T=1.0$).
+Run a fixed number of trials (e.g., $L=100$).
+Calculate the acceptance ratio $\chi$ (number of accepted moves / $L$).
+If $\chi < \chi_{target}$ (e.g., 0.8), multiply the temperature (e.g., $T = T \cdot 2.0$) and return to step 2.
+If $\chi \ge \chi_{target}$, set $T_0 = T$ and begin the main SA algorithm.23
+This method is superior to simply guessing $T_0$ or using variance-based heuristics, as it directly measures the algorithm's behavior on the specific problem landscape.
+Conceptual Python Implementation ($T_0$ Finder):Pythondef find_initial_temp(cost_func, initial_state, target_acceptance=0.8, n_trials=100):    T = 1.0    current_cost = cost_func(initial_state)    while True:        accepted = 0        for _ in range(n_trials):            neighbor = generate_neighbor(initial_state) # Assumes this function exists            neighbor_cost = cost_func(neighbor)            delta_E = neighbor_cost - current_cost            if delta_E < 0 or np.random.rand() < np.exp(-delta_E / T):                accepted += 1        acceptance_ratio = accepted / n_trials        if acceptance_ratio >= target_acceptance:            return T        else:            T *= 2.0 # Increase temperature
+
+2.3 Reheating and Restart Strategies
+
+Reheating is a crucial adaptive mechanism for escaping deep local minima that are found after the algorithm has already cooled significantly.
+Algorithmic Principle: When the search is detected as "stuck" in a local minimum, the temperature is programmatically increased to "re-melt" the system, enabling it to escape the basin and explore other regions.25
+Trigger Mechanism: Reheating is triggered when the algorithm stagnates. This is typically defined as:
+The current cost has not improved by more than 1% for $N$ iterations.27
+The best-so-far cost has not been updated for $N$ temperature steps.26
+Update Rule:
+Simple Restart: When stuck, reset $T = T_0$.26 This is a brute-force approach, suggesting the initial cooling was too fast.
+Adaptive Reheating (RFC): A more sophisticated "Reheating as a Function of Cost" (RFC) method sets the new temperature relative to the problem state.20 When triggered, $T_{new} = K \cdot C_b + T(C_H^{max})$, where $C_b$ is the current best cost and $T(C_H^{max})$ is the phase transition temperature (identified via specific heat). This intelligently "kicks" the search just high enough to escape the current barrier.
+Empirical Evidence: For complex spatial problems, reheating is not optional. A study on large-scale university course scheduling—a problem analogous to campus planning in its combinatorial complexity—found that the only method capable of producing a complete, valid schedule was "simulated annealing with adaptive cooling and reheating as a function of cost".20
+
+Table 2: Analysis of Adaptive Cooling Strategies
+
+
+Strategy
+Algorithmic Principle
+Feedback Signal
+Update Rule / Trigger
+Fitness-Variance (Specific Heat)
+Cool slowly in "rough" regions (phase transitions) and quickly in "smooth" regions.20
+Cost Variance, $\sigma^2(T)$ (Specific Heat, $C_H$).22
+High $\sigma^2(T)$ $\to$ Slow cooling (e.g., $T_{j+1} \approx T_j$). Low $\sigma^2(T)$ $\to$ Fast cooling.
+Acceptance Ratio-Based
+Maintain a target acceptance ratio.
+Acceptance Ratio, $\chi$.
+(As $T_0$ finder): $\chi < \chi_{target} \to T = T \cdot 2.0$.[23]
+Reheating (Cost-Based)
+When stuck in a deep local minimum, increase $T$ to escape.[25]
+Stagnation of best_cost for $N$ steps.27
+$T_{new} = K \cdot C_{best} + T_{phase\_transition}$.20
+Adaptive Markov Chain Length
+Spend more time (more iterations $L$) at "difficult" temperatures.29
+$\Delta$ between $Worst$ and $Best$ solution at current $T$.29
+High $\Delta \to$ Increase $L$.29
+
+3. Parameterization and Control
+
+The success of any schedule, classical or adaptive, depends on its core hyperparameters: $T_0$, $\alpha$ (if geometric), and $L$ (Markov chain length).
+
+3.1 Estimating Initial Temperature ($T_0$)
+
+A $T_0$ that is too low is equivalent to greedy hill-climbing, trapping the search in the first local minimum it finds.8 A $T_0$ that is too high simply wastes computation in a purely random walk.
+Heuristic 1: Acceptance Rate (Recommended): As detailed in Section 2.2, this is the most robust, problem-aware method. The $T_0$ is set by finding the temperature that yields a target initial acceptance rate $\chi_0 \ge 0.8$.7
+Heuristic 2: Fitness Variance: This method involves a pre-run random walk of $N$ steps to sample the cost landscape. The standard deviation of the sampled costs, $\sigma$, is calculated. $T_0$ is then set as $T_0 = K \cdot \sigma$, where $K$ is a constant, typically 5 to 10.24
+Heuristic 3: Average Cost Increase: An alternative formula is $T_0 = - \Delta E_{avg}^+ / \log(\chi_0)$, where $\Delta E_{avg}^+$ is the average cost increase of "uphill" moves observed during a random walk, and $\chi_0$ is the desired initial acceptance rate.24
+
+3.2 Selecting the Geometric Cooling Rate ($\alpha$)
+
+This parameter ($T(k) = T_0 \cdot \alpha^k$) is the most sensitive knob in classical SA.
+Analysis of the [0.8, 0.99] Range: For complex problems, a "fast" $\alpha$ (e.g., 0.8) is almost certainly suboptimal, as it does not allow enough time for exploration.11 For difficult spatial optimization problems, $\alpha$ must be set very close to 1, such as $\alpha \in [0.95, 0.99]$.11
+Underlying Weakness: The need to manually tune $\alpha$ to a value like 0.99 (or 0.999 for very hard problems) demonstrates the weakness of the geometric schedule. This manually-tuned, slow schedule is precisely what Fitness Variance-Based Cooling (Section 2.1) aims to automate and improve, by cooling slowly only when necessary.
+
+3.3 Determining Markov Chain Length ($L$)
+
+The Markov Chain Length ($L$) is the number of iterations (neighbor proposals) performed at a single temperature step. It must be long enough for the system to reach a quasi-equilibrium (a stationary distribution) at that temperature.29
+Strategy 1: Fixed $L$: $L$ is set as a function of the problem size, $n$ (e.g., number of buildings). For the Traveling Salesman Problem with $n$ cities, $L$ is often set to $100 \cdot n$ (attempts) or $10 \cdot n$ (accepted changes).31 For a campus problem with $n=100$, this implies $L \ge 10,000$.
+Strategy 2: Adaptive $L$: $L$ is varied dynamically. For example, the MCLa2 strategy increases $L$ if the difference between the worst and best solutions within the current temperature step is large.29 This is the same underlying principle as specific heat cooling: high variance (a "rough" landscape) is detected, and computational effort is increased to compensate.
+A common, robust approach is to combine a large, fixed $L$ (e.g., $L=100 \cdot n$) with an adaptive $T$ schedule (like specific heat) and reheating.
+
+Table 3: Parameter Estimation Heuristics
+
+
+Parameter
+Heuristic/Method
+Rule-of-Thumb / Formula
+Source(s)
+$T_0$ (Initial Temp)
+Acceptance Rate
+Run pre-search, increasing $T$ until acceptance rate $\chi \ge 0.8$.
+23
+$T_0$ (Initial Temp)
+Fitness Variance
+$T_0 = K \cdot \sigma$, where $\sigma$ is std. dev. of cost from a random walk and $K \in $.
+24
+$\alpha$ (Geometric Rate)
+Problem Complexity
+$\alpha \in [0.8, 0.9]$ for simple problems. $\alpha \in [0.95, 0.99]$ for complex, multimodal problems.
+11
+$L$ (Markov Length)
+Fixed, size-dependent
+$L = C \cdot n$ or $L = C \cdot n^2$, where $n$ is problem size. E.g., $C=100$.
+[31, 32]
+$L$ (Markov Length)
+Adaptive
+Increase $L$ if $\sigma^2(T)$ is high (i.e., difference between worst and best cost is large).
+29
+
+4. Quantitative Performance Comparison
+
+Empirical data provides a clear verdict on the performance of these schedules in finite, practical computation time.
+
+4.1 Performance on Standard Benchmark Functions
+
+Rastrigin Function: This function is highly multimodal, with a single global optimum surrounded by a "grid" of many deep local optima. It is a key test of exploration and the algorithm's ability to avoid getting trapped.33
+Rosenbrock Function: This function features a long, narrow, parabolic-shaped valley ("banana function"). The global optimum lies at the bottom of this valley, which is "ill-conditioned" and difficult to navigate.34 It is a key test of exploitation and the algorithm's ability to perform fine-tuning within a difficult basin.9
+Performance: The choice of function matters. A fast, exploitative schedule may perform well on Rosenbrock but will fail catastrophically on Rastrigin. A slow, exploratory schedule is needed for Rastrigin. This conflict highlights the need for adaptive or hybrid schedules. Studies on the Rosenbrock function have shown that adaptive "Variable Cooling Factor" (VCF) models are "more reliable" and find the optimum with "minimal number of iterations" compared to classical SA.9
+
+4.2 Solution Quality vs. Computational Time: Empirical Data
+
+A study on the geometric optimization of a heat transfer problem (a strong proxy for spatial optimization) provides direct quantitative data comparing classical schedules against hybrid schedules.19 The hybrid schedules tested include BoltzExp (switches from Boltzmann to Exponential), ConstExp1, and ConstExp2 (holds $T$ constant, then switches to Exponential).19
+The results, shown in Table 4, are definitive.
+
+Table 4: Empirical Performance of Cooling Schedules on a Geometric Optimization Problem (Data from
+19
+
+
+Rank
+Cooling Schedule
+Formula Type
+Mean % Global Optimum Found
+Standard Deviation
+1
+ConstExp2
+Hybrid (Constant $\to$ Exp, $\alpha=0.9$) 19
+62.44%
+25.63
+2
+ConstExp1
+Hybrid (Constant $\to$ Exp, $\alpha=0.95$) 19
+54.67%
+23.57
+3
+BoltzExp
+Hybrid (Boltz $\to$ Exp) 19
+54.39%
+20.93
+4
+Boltz (Logarithmic)
+Classical
+42.72%
+17.09
+5
+Exponential
+Classical
+27.50%
+16.86
+6
+Fast (Cauchy)
+Classical
+12.94%
+10.11
+Analysis of Empirical Data:
+Hybrid Superiority: All three hybrid schedules dramatically outperformed all three classical schedules.19
+Classical Failure: The "Fast (Cauchy)" schedule was the worst performer, finding the global optimum in only 12.94% of runs.19 The standard Exponential schedule was the second worst.
+"Schedule Switching" Works: The best-performing schedules (ConstExp1, ConstExp2) use a "schedule switching" strategy: maintain a constant high $T$ for a fixed "burn-in" period (exploration), then switch to a fast exponential decay (exploitation).19 This is empirically more effective than a single, slow cooling curve.
+Theoretical vs. Practical: The "theoretically perfect" Logarithmic (Boltzmann) schedule was mediocre, beaten by all three hybrid schedules. This confirms that its theoretical asymptotic convergence does not translate to superior performance in finite, practical time.
+
+4.3 Empirical Studies in Spatial Optimization
+
+The findings from Table 4 are strongly supported by studies on analogous, large-scale spatial problems.
+Facility/Warehouse Layout: In studies on flexible facility layout and warehouse network problems, the simple geometric (exponential) schedule was often found to be effective and fast.2
+Academic Timetabling (TTP): A contradictory finding arises from a more complex problem. A study on large university course timetabling—a "high-dimensional, non-Euclidean, multi-constraint combinatorial optimization problem" 20—found that simple schedules failed. The only method that produced a complete, valid schedule was "simulated annealing with adaptive cooling and reheating as a function of cost".20
+The user's campus planning problem (500x500m², 5-100 buildings, with complex constraints like adjacencies, utilities, and flow) is far more analogous to the complex TTP 20 than to a simple facility layout problem. This strongly suggests that a simple geometric schedule is insufficient and will likely fail, and that a robust, adaptive schedule with reheating is required for success.
+
+5. Recommendations for Campus Planning (500x500m², 5-100 Buildings)
+
+Based on the preceding quantitative analysis, a "one-size-fits-all" classical schedule is suboptimal for this high-dimensional spatial optimization problem. A simple geometric schedule is likely to fail 20, and a logarithmic schedule is computationally non-viable.10
+The most robust, empirically-supported, and professionally sound approach is a multi-stage hybrid adaptive strategy that combines adaptive $T_0$ finding, specific-heat-based cooling, and cost-based reheating.
+
+5.1 Best Strategy for Exploration (Early Phase)
+
+The exploration phase should not be left to a "guess" of $T_0$.
+Recommendation: Use the Acceptance Ratio-Based Heuristic (see Section 2.2).
+Algorithm:
+Perform a pre-run calibration.
+Set $T_0$ to the temperature that first yields an acceptance ratio $\chi_0 \ge 0.8$.23 This algorithmically determines the "melting point" of the specific campus layout problem.
+Set a large, fixed Markov Chain Length ($L$) proportional to the problem size $n$ (number of buildings), e.g., $L = 100 \cdot n$.31 For 100 buildings, $L=10,000$.
+
+5.2 Best Strategy for Exploitation (Late Phase)
+
+A "blind" geometric schedule ($\alpha=0.95$) is the classical choice but is inefficient and can get stuck.
+Recommendation: Use a Fitness Variance-Based (Specific Heat) schedule.
+Algorithm:
+After $T_0$ is set, cool the system using the adaptive rule: $T_{j+1} = T_j \cdot \exp(-\frac{\alpha_0 T_j}{\sigma(T_j)})$.20
+This provides the best of both worlds: it cools very slowly and carefully when variance $\sigma$ is high (i.e., in the "bumpy" mid-phase of the search) and cools very quickly when variance is low (i.e., when descending into a simple, final basin). This is far more efficient than a blind, slow $\alpha=0.99$ schedule.
+
+5.3 Recommended Hybrid Adaptive Strategy (Schedule Switching)
+
+The campus planning problem is too complex to rely on a simple cooling curve. It requires a mechanism to escape the "grand" local minima (e.g., two major campus zones being swapped). This requires the strategy that proved uniquely successful in the analogous TTP problem: reheating.20
+The final recommended algorithm is a three-part hybrid approach, detailed in Table 5.
+
+Table 5: Recommended Hybrid Adaptive Strategy for Campus Planning
+
+
+Phase
+Algorithm
+Key Parameters / Trigger
+Rationale
+Phase 1: Initialization
+Acceptance-Ratio Heuristic
+Trigger: $\chi < 0.8$
+
+Action: $T = T \cdot 2.0$
+
+Output: Problem-specific $T_0$.
+Guarantees the search begins in a "melted" state, enabling full exploration.23
+Phase 2: Adaptive Cooling
+Fitness Variance-Based (Specific Heat) Cooling
+Formula: $T_{j+1} = T_j \cdot \exp(-\frac{\alpha_0 T_j}{\sigma(T_j)})$
+
+Signal: $\sigma(T_j)$ (Cost variance)
+The most efficient cooling path. Automatically slows down at "phase transitions" (high $\sigma$) and speeds up in smooth basins (low $\sigma$).20
+Phase 3: Escape (Reheating)
+Reheating as a Function of Cost (RFC)
+Trigger: best_cost is "stuck" (no improvement for $N$ temperature steps).
+Action: $T_{new} = K \cdot C_{best} + T_{phase\_transition}$
+This hybrid strategy directly addresses the primary challenges of spatial optimization. Phase 1 guarantees exploration. Phase 2 provides the most efficient and landscape-aware cooling path. Phase 3 provides the robustness to ensure the search does not prematurely converge, a feature that was empirically demonstrated as necessary for solving analogous, high-dimensional, multi-constraint problems.20
+Alıntılanan çalışmalar
+Simulated annealing - Wikipedia, erişim tarihi Kasım 3, 2025, https://en.wikipedia.org/wiki/Simulated_annealing
+Analysis of simulated annealing cooling schemas for design of optimal flexible layout under uncertain dynamic product demand - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/330058851_Analysis_of_simulated_annealing_cooling_schemas_for_design_of_optimal_flexible_layout_under_uncertain_dynamic_product_demand
+A large-scale hybrid simulated annealing algorithm for cyclic facility layout problems, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/271943000_A_large-scale_hybrid_simulated_annealing_algorithm_for_cyclic_facility_layout_problems
+Simulated Annealing : Methods and Real-World Applications – OMSCS 7641, erişim tarihi Kasım 3, 2025, https://sites.gatech.edu/omscs7641/2024/02/19/simulated-annealing-methods-and-real-world-applications/
+Simulated Annealing From Scratch in Python - MachineLearningMastery.com, erişim tarihi Kasım 3, 2025, https://machinelearningmastery.com/simulated-annealing-from-scratch-in-python/
+Investigating a Genetic Algorithm- Simulated Annealing Hybrid Applied to University Course Timetabling Problem - DiVA portal, erişim tarihi Kasım 3, 2025, https://www.diva-portal.org/smash/get/diva2:927039/FULLTEXT01.pdf
+Effective Simulated Annealing with Python - Nathan Rooy, erişim tarihi Kasım 3, 2025, https://nry.me/posts/2020-05-14/simulated-annealing-with-python/
+LAB 8 – SIMULATED ANNEALING - Department of Computer Science, erişim tarihi Kasım 3, 2025, http://www.cs.tufts.edu/es/93CD/Labs/Lab8.pdf
+An Optimal Cooling Schedule Using a Simulated Annealing Based Approach - Scirp.org., erişim tarihi Kasım 3, 2025, https://www.scirp.org/journal/paperinformation?paperid=78834
+Performance Analysis of Simulated Annealing Cooling Schedules in the Context of Dense Image Matching - SciELO México, erişim tarihi Kasım 3, 2025, https://www.scielo.org.mx/scielo.php?script=sci_arttext&pid=S1405-55462017000300493
+Chapter 2 - Temperature and Cooling Schedules | Algorithm Afternoon, erişim tarihi Kasım 3, 2025, https://algorithmafternoon.com/books/simulated_annealing/chapter02/
+Performance Analysis of Simulated Annealing Cooling Schedules in the Context of Dense Image Matching, erişim tarihi Kasım 3, 2025, https://www.scielo.org.mx/pdf/cys/v21n3/1405-5546-cys-21-03-00493.pdf
+Guided Hybrid Modified Simulated Annealing Algorithm for Solving Constrained Global Optimization Problems - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2227-7390/10/8/1312
+The comparison and classification between analysed cooling schedules (b_exp= BoltzExp;c_exp1 = CosntExp1; c_exp2 = ConstExp2). - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/figure/The-comparison-and-classification-between-analysed-cooling-schedules-b-exp_fig2_282449315
+How Simulated Annealing Works - MATLAB & Simulink - MathWorks, erişim tarihi Kasım 3, 2025, https://www.mathworks.com/help/gads/how-simulated-annealing-works.html
+Simulated Stochastic Approximation Annealing for Global Optimization with a Square-Root Cooling Schedule, erişim tarihi Kasım 3, 2025, https://www.stat.purdue.edu/~fmliang/STAT598Purdue/saa.pdf
+python - Simulated Annealing - Intuition - Stack Overflow, erişim tarihi Kasım 3, 2025, https://stackoverflow.com/questions/72942920/simulated-annealing-intuition
+Implement Simulated Annealing in Python - GeeksforGeeks, erişim tarihi Kasım 3, 2025, https://www.geeksforgeeks.org/dsa/implement-simulated-annealing-in-python/
+A Comparative Study of Simulated Annealing with Different Cooling Schedules for Geometric Optimization of a Heat - revista Scientia Plena, erişim tarihi Kasım 3, 2025, https://www.scientiaplena.org.br/sp/article/download/081321/1295
+A Comparison of Annealing Techniques for Academic Course ..., erişim tarihi Kasım 3, 2025, https://surface.syr.edu/cgi/viewcontent.cgi?article=1007&context=npac
+arXiv:2002.06124v1 [physics.chem-ph] 14 Feb 2020, erişim tarihi Kasım 3, 2025, https://arxiv.org/pdf/2002.06124
+Simulated Annealing with Adaptive Cooling Rates, erişim tarihi Kasım 3, 2025, https://arxiv.org/abs/2002.06124
+4. Implementation of SA algorithm, erişim tarihi Kasım 3, 2025, https://courses.grainger.illinois.edu/phys466/fa2020/projects/2001/team1/implem.htm
+(PDF) Computing the Initial Temperature of Simulated Annealing - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/227061666_Computing_the_Initial_Temperature_of_Simulated_Annealing
+Re-heat simulated annealing algorithm for rough set attribute reduction - Academic Journals, erişim tarihi Kasım 3, 2025, https://academicjournals.org/journal/IJPS/article-full-text-pdf/D6CF1F025890
+Repeating Simulated Annealing - Operations Research Stack Exchange, erişim tarihi Kasım 3, 2025, https://or.stackexchange.com/questions/12924/repeating-simulated-annealing
+Simulated annealing with improved reheating and ... - Graham Kendall, erişim tarihi Kasım 3, 2025, https://www.graham-kendall.com/papers/gks2019.pdf
+Simulated Annealing with Restart Strategy | Towards Data Science, erişim tarihi Kasım 3, 2025, https://towardsdatascience.com/simulated-annealing-with-restart-a19a53d914c8/
+Performance Analysis of Simulated Annealing ... - SEDICI - UNLP, erişim tarihi Kasım 3, 2025, http://sedici.unlp.edu.ar/bitstream/handle/10915/130311/Documento_completo.pdf-PDFA.pdf?sequence=1&isAllowed=y
+Neural Network Structure Optimization by Simulated Annealing - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/1099-4300/24/3/348
+Simulated Annealing - SURFACE at Syracuse University, erişim tarihi Kasım 3, 2025, https://surface.syr.edu/cgi/viewcontent.cgi?referer=&httpsredir=1&article=1158&context=eecs_techreports
+Determining the significance and relative importance of parameters of a simulated quenching algorithm using statistical tools - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/235709678_Determining_the_significance_and_relative_importance_of_parameters_of_a_simulated_quenching_algorithm_using_statistical_tools
+1. INTRODUCTION Simulated annealing is a global optimization algorithm modeled after the natural process of crystallization, whe, erişim tarihi Kasım 3, 2025, https://people.sc.fsu.edu/~inavon/5420a/DKANNEALPAPER.pdf
+A Comparison of Simulated Annealing Cooling Strategies for Redesigning a Warehouse Network Problem - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/337079686_A_Comparison_of_Simulated_Annealing_Cooling_Strategies_for_Redesigning_a_Warehouse_Network_Problem

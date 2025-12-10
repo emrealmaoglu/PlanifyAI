@@ -1,6 +1,6 @@
 # ============================================
 # PlanifyAI .gitignore
-# Created: 2025-11-03
+# Updated: 2025-12-09 (Phase 10 Cleanup)
 # ============================================
 
 # Python
@@ -62,6 +62,9 @@ htmlcov/
 .hypothesis/
 coverage.xml
 *.cover
+.mypy_cache/
+.ruff_cache/
+.benchmarks/
 
 # Data (heavy files)
 # ------------------
@@ -71,10 +74,10 @@ data/processed/*
 !data/processed/.gitkeep
 data/outputs/*
 !data/outputs/.gitkeep
+data/osm/*.osm
 *.csv
 *.xlsx
 *.shp
-*.geojson
 *.parquet
 
 # Model outputs
@@ -109,6 +112,7 @@ Thumbs.db
 *.bak
 *.swp
 *~.nib
+*.sqlite
 
 # Documentation builds
 # --------------------
@@ -127,3 +131,20 @@ site/
 .env.local
 .env.*.local
 
+# Archive folder (legacy files)
+# -----------------------------
+archive/
+
+# Node.js
+# --------
+node_modules/
+package-lock.json
+
+# Cache
+# ------
+cache/
+.wind_cache.sqlite
+
+# GeoJSON (can be large)
+# ----------------------
+*.geojson

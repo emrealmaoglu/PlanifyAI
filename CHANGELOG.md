@@ -7,6 +7,110 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Sprint 4 - Performance Optimizations (2025-12-10)
+
+#### Faz 4.2 - SA Parallelization
+- Added `parallel_sa` config flag for ThreadPoolExecutor-based parallel SA chains
+- Added `_run_single_chain` helper method with thread-local RNG
+- Refactored `SAExplorer.run()` to support parallel/sequential modes
+
+#### Faz 4.3 - R-tree Spatial Indexing
+- Added STRtree import from Shapely for O(n log n) spatial queries
+- Optimized `overlap_violation` using R-tree (was O(n²))
+- Optimized `separation_violation` using R-tree buffer queries (was O(n²))
+
+### Sprint 5 - OptimizationResults Refactor (2025-12-10)
+
+#### Faz 5.1 - Layer Component Entegrasyonu
+- Integrated `WindOverlay` component for wind arrow visualization
+- Integrated `SlopeOverlay` component for slope heatmap
+- Removed 122 lines of inline useEffect code from OptimizationResults.tsx
+- **Result:** 942 → 820 lines (13% reduction)
+
+### Sprint 6 - Error Handling (2025-12-10)
+
+#### Faz 6.1 - Error Boundary
+- Added `ErrorBoundary.tsx` component with React crash recovery
+- Türkçe UI with retry/refresh buttons
+- Development mode stack trace display
+
+#### Faz 6.2 - Toast Notification
+- Added `Toast.tsx` with useToast hook
+- ToastProvider context for global toast access
+- success/error/warning/info methods
+- Auto-dismiss with CSS slide-in animation
+
+### Sprint 7 - Toast API Integration (2025-12-10)
+
+- Integrated `useToast` hook into `OptimizationResults.tsx`
+- Added success/error toasts for simulation start/fail
+- Fixed TypeScript verbatimModuleSyntax lint errors
+
+### Sprint 8 - Documentation Finalization (2025-12-10)
+
+- Updated `TODOS.md` - marked 4 P0 and 3 P1 issues as resolved
+- Updated `README.md` to v10.2.0 with new features
+- Updated `ROADMAP.md` with Sprint 1-8 completion table
+- Project now at v10.2.0 Production Ready status
+
+### Sprint 9 - Architecture Docs + Toast Enhancement (2025-12-10)
+
+- Updated `SYSTEM_ARCHITECTURE_AND_ROADMAP.md` to v10.2.0
+- Added new modules to directory tree (storage/, layers/, tests/)
+- Added success/error toasts to `fetchContext` function
+- Verified geoContext.features issue already fixed (using previewContext)
+
+### Sprint 10 - UX Polish & Testing (2025-12-10)
+
+- Enhanced `SimulationPanel.tsx` with Glassmorphism UI and log history
+- Added animated loading indicators and pulse effects
+- Added `data-testid` attributes to critical UI elements for better testing coverage
+- Fixed author typo in `SYSTEM_ARCHITECTURE_AND_ROADMAP.md`
+
+### Sprint 11 - Visual Feedback Improvements (2025-12-10)
+
+- Attempted "Ghosting Effect" for deleted buildings using Mapbox Feature State
+- ❌ Reverted: Caused critical regression where all buildings disappeared. Restored previous filter-based deletion logic.
+- Plan: Investigate Mapbox GL JS feature-state behavior with string IDs in future sprints.
+
+### Sprint 3 - Test & Research Alignment (2025-12-10)
+
+#### Faz 3.1 - Backend Testleri
+- Added `test_constraint_calculator.py` (12 tests - boundary, overlap, setback, separation)
+- Added `test_sqlite_job_store.py` (13 tests - CRUD, list, health check)
+- Added `test_optimize_endpoints.py` (10 tests - /health, /start, /status, /result)
+- Added `test_hsaga_runner.py` (config tests)
+
+#### Faz 4.1 - Research Alignment
+- Added `RESEARCH_IMPLEMENTATION_STATUS.md` documenting 61 research papers → code mapping
+
+### Sprint 2 - Backend Production Hazırlığı
+
+#### Faz 2.1 - Job Storage Mimarisi
+- Added `JobStore` Protocol for storage abstraction
+- Added `SQLiteJobStore` for persistent job storage
+- Migrated `_jobs = {}` → SQLiteJobStore in optimize.py
+- Added DB health check to `/health` endpoint
+
+#### Faz 2.2 - Hata Yönetimi & Güvenlik
+- Fixed PipelineConfig `num_buildings` parameter error
+- Added `rate_limiter.py` - in-memory rate limiting module
+- Added `logging_config.py` - structured JSON logging module
+
+### Sprint 1 - Code Quality & Refactor (2025-12-10)
+
+#### Backend
+- **Removed:** Legacy optimization router (`backend/api/routers/optimization.py`)
+- **Added:** `/health` endpoint for load balancers and monitoring
+
+#### Frontend  
+- **Removed:** 6 unused components (ControlPanel, Sidebar, ProgressDisplay, Map, ErrorBoundary, api/client)
+- **Added:** `SimulationPanel.tsx` component (extracted from OptimizationResults)
+- **Added:** `useMapInitialization.ts` hook (map init logic)
+- **Fixed:** Hardcoded `localhost:8000` URLs → config-based
+- **Fixed:** `geoContext.features` type error (added `previewContext` to store)
+- **Added:** `.env.example` for frontend configuration
+
 ### Added (Phase 1 - Turkish Standards Engine)
 
 - Turkish building classification system (Yapı Sınıfları I-A to V-C)
