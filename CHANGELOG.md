@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.2.1] - 2025-12-10
+
+### Added
+- **Process-Based Parallelism**: Implemented `ProcessPoolExecutor` for the Simulated Annealing phase (H-SAGA) to bypass Python GIL.
+- **Benchmarks**: New `scripts/test_parallel_speedup.py` for verifying multi-core scaling.
+- **P0 Optimization**: Achieved ~2x speedup on 8-core M1/M2 chips for >2000 evaluations.
+- **Architecture**: Documented parallel model in `SYSTEM_ARCHITECTURE_AND_ROADMAP.md`.
+
+### Fixed
+- **Serialization**: Added `__getstate__`/`__setstate__` to `SpatialOptimizationProblem` for pickle-safe multiprocessing.
+- **Dependencies**: Updated `pillow` and `tenacity` versions.
+
 ## [0.1.0] - 2025-11-10
 
 ### Added - Week 1 MVP
