@@ -127,3 +127,11 @@ site/
 .env
 .env.local
 .env.*.local
+
+# PlanifyAI Specific
+# ------------------
+node_modules/
+cache/
+data/
+archive/
+**/* 2.*

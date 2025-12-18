@@ -1,7 +1,7 @@
 # PlanifyAI - Kapsamlı Sistem Analizi ve TODO Listesi
 
-> **Oluşturulma Tarihi:** 2025-12-09  
-> **Analiz Kapsamı:** Tüm belgeler, araştırmalar, kod tabanı, UI/UX, mimari  
+> **Oluşturulma Tarihi:** 2025-12-09
+> **Analiz Kapsamı:** Tüm belgeler, araştırmalar, kod tabanı, UI/UX, mimari
 > **Son Güncelleme:** 2025-12-10 (Sprint 1-5 işaretlendi)
 
 ---
@@ -45,9 +45,9 @@
 
 ## 🟡 ORTA ÖNCELİKLİ SORUNLAR (P1)
 
-### ~~5. TypeScript Kullanılmayan Değişkenler~~ ✅ DÜZELTİLDİ (Sprint 5)
-- **Not:** OptimizationResults.tsx refactor edildi (942→820 satır)
-- Kullanılmayan değişkenler temizlendi
+### ~~5. TypeScript Kullanılmayan Değişkenler~~ ✅ DÜZELTİLDİ (Sprint 5/11)
+- **Not:** OptimizationResults.tsx refactor edildi (<250 satır).
+- Kullanılmayan değişkenler temizlendi.
 
 ### 6. geoContext Tip Uyumsuzluğu
 ```typescript
@@ -219,10 +219,11 @@ async def quick_optimization(...):
 - [ ] CHANGELOG.md'yi Phase 10'a kadar güncelle
 
 ### İyi Olur (Bu Ay)
-- [ ] Loading skeleton ekle
-- [ ] Toast notification sistemi kur
+- [x] Loading skeleton ekle (Partial)
+- [x] Toast notification sistemi kur (Done)
 - [ ] Frontend testleri (Vitest) başlat
-- [ ] OptimizationResults.tsx'i parçala
+- [x] OptimizationResults.tsx'i parçala (Done FE-UX-001-A)
+- [ ] MapContext & MapContainer implementasyonu (FE-UX-002-A)
 
 ---
 

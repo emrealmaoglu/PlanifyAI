@@ -1,15 +1,15 @@
+import * as mapboxgl from 'mapbox-gl';
 import { useEffect } from 'react';
+import { useMapContext } from '../map/MapContext';
 
 interface SlopeOverlayProps {
-    map: any; // mapboxgl.Map
-    isMapLoaded: boolean;
     slopeEnabled: boolean;
     features: GeoJSON.Feature[];
 }
 
 /**
  * SlopeOverlay - Eğim/Walkability heatmap layer'ı
- * 
+ *
  * OptimizationResults.tsx'den çıkarıldı (Faz 1.1.6)
  * Sorumluluklar:
  * - Slope data visualization
@@ -17,11 +17,11 @@ interface SlopeOverlayProps {
  * - Visibility toggle
  */
 export function SlopeOverlay({
-    map,
-    isMapLoaded,
     slopeEnabled,
     features
 }: SlopeOverlayProps) {
+    const { map, isMapLoaded } = useMapContext();
+
     useEffect(() => {
         if (!map || !isMapLoaded) return;
 

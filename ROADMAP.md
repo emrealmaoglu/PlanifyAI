@@ -20,12 +20,13 @@ This roadmap transitions PlanifyAI from an **"Academic Prototype"** to a **"Prof
 **Goal:** Eliminate "God Components" and establish strict architectural boundaries.
 **Timeline:** Sprint 10-11
 
-- [ ] **10.1 Frontend Decoupling (The `OptimizationResults.tsx` Split)**
-    - [ ] `hooks/useMapInitialization.ts`: Encapsulate Mapbox setup & terrain.
-    - [ ] `hooks/useBuildingInteraction.ts`: Encapsulate click/hover/popup logic.
-    - [ ] `layers/WindOverlay.tsx` & `SolarOverlay.tsx`: Isolate physics layers.
-    - [ ] `SimulationPanel.tsx`: Isolate sidebar control logic.
-    - [ ] `OptimizationResults.tsx`: Reduce from 933 lines to <200 lines (Orchestrator only).
+- [x] **10.1 Frontend Decoupling (The `OptimizationResults.tsx` Split)**
+    - [x] `hooks/useMapInitialization.ts`: Encapsulate Mapbox setup & terrain.
+    - [x] `hooks/useBuildingInteraction.ts`: Encapsulate click/hover/popup logic.
+    - [x] `layers/WindOverlay.tsx` & `SolarOverlay.tsx`: Isolate physics layers.
+    - [x] `SimulationPanel.tsx`: Isolate sidebar control logic.
+    - [x] `OptimizationResults.tsx`: Reduce from 933 lines to <200 lines (Orchestrator only).
+    - [ ] **10.1.1 Refactor:** Migrate to `MapContext` & `MapContainer` (FE-UX-002-A).
 
 - [ ] **10.2 Backend Service Refactoring**
     - [x] **OSM Service Intelligence:** Restored "Context/Residential" building classification.

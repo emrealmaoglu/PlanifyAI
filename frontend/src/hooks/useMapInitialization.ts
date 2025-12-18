@@ -1,156 +1,133 @@
-import { useEffect, useRef, useState } from 'react';
-import * as mapboxgl from 'mapbox-gl';
 import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
-import MapboxDraw from '@mapbox/mapbox-gl-draw';
+import * as mapboxgl from 'mapbox-gl';
+import { useEffect, useRef, useState } from 'react';
+
+// CSS imports are handled in index.css
 
 interface UseMapInitializationProps {
-    mapContainerRef: React.RefObject<HTMLDivElement>;
+    mapContainer: React.RefObject<HTMLDivElement | null>;
     mapboxToken: string;
     initialCenter: [number, number];
     initialZoom: number;
-    onMapLoaded?: () => void;
-    onSearchResult?: (lat: number, lng: number) => void;
-    onBoundaryUpdate?: (e: any) => void;
+    onGeocoderResult?: (e: any) => void;
 }
 
-interface UseMapInitializationReturn {
+interface UseMapInitializationResult {
     map: mapboxgl.Map | null;
-    draw: MapboxDraw | null;
     isMapLoaded: boolean;
 }
 
-/**
- * useMapInitialization - Mapbox harita başlatma hook'u
- * 
- * OptimizationResults.tsx'den çıkarıldı (Faz 1.1.3)
- * Sorumluluklar:
- * - Mapbox map instance oluşturma
- * - Geocoder ekleme
- * - Terrain/Atmosphere ayarları
- * - MapboxDraw kontrolü
- */
-export function useMapInitialization({
-    mapContainerRef,
+export const useMapInitialization = ({
+    mapContainer,
     mapboxToken,
     initialCenter,
     initialZoom,
-    onMapLoaded,
-    onSearchResult,
-    onBoundaryUpdate
-}: UseMapInitializationProps): UseMapInitializationReturn {
-    const mapRef = useRef<mapboxgl.Map | null>(null);
-    const drawRef = useRef<MapboxDraw | null>(null);
+    onGeocoderResult
+}: UseMapInitializationProps): UseMapInitializationResult => {
+    const map = useRef<mapboxgl.Map | null>(null);
     const [isMapLoaded, setIsMapLoaded] = useState(false);
 
     useEffect(() => {
-        if (mapRef.current || !mapContainerRef.current) return;
+        if (map.current || !mapContainer.current) return;
 
-        // Handle "import * as" behavior
+        console.log("Initializing Mapbox map...");
+
+        // Handle "import * as" behavior compatibility
         const mb = (mapboxgl as any).default || mapboxgl;
         mb.accessToken = mapboxToken;
 
-        // 1. MAP SETTINGS
-        const mapInstance = new mb.Map({
-            container: mapContainerRef.current,
-            style: 'mapbox://styles/mapbox/navigation-night-v1',
-            center: initialCenter,
-            zoom: initialZoom,
-            pitch: 55,
-            bearing: -10
-        });
-        mapRef.current = mapInstance;
+        try {
+            // 1. Initialize Map
+            const mapInstance = new mb.Map({
+                container: mapContainer.current,
+                style: 'mapbox://styles/mapbox/navigation-night-v1',
+                center: initialCenter,
+                zoom: initialZoom,
+                pitch: 55,
+                bearing: -10,
+                projection: { name: 'globe' } as any // Optional: for nicer globe view at low zoom
+            });
+            map.current = mapInstance;
 
-        mapInstance.on('load', () => {
-            console.log("Harita yüklendi, eklentiler başlatılıyor...");
-            setIsMapLoaded(true);
-            onMapLoaded?.();
-
-            // 2. SEARCH ENGINE (Geocoder)
-            try {
-                if (MapboxGeocoder) {
-                    const geocoder = new MapboxGeocoder({
-                        accessToken: mapboxToken,
-                        mapboxgl: mb as any,
-                        countries: 'tr',
-                        language: 'tr',
-                        types: 'poi,address,place,locality',
-                        proximity: { longitude: 33.7715, latitude: 41.4245 },
-                        placeholder: 'Kampüs içinde ara (Örn: Rektörlük)',
-                        marker: false
-                    });
-                    mapInstance.addControl(geocoder, 'top-left');
-
-                    geocoder.on('result', (e: any) => {
-                        const { center } = e.result;
-                        onSearchResult?.(center[1], center[0]);
-                    });
+            // Error Handling
+            mapInstance.on('error', (e: any) => {
+                // Suppress 403/404 for tiles
+                if (e.error?.message?.includes('403') || e.error?.message?.includes('404')) {
+                    return;
                 }
-            } catch (err) {
-                console.error("Error initializing MapboxGeocoder:", err);
-            }
-
-            // 3. TERRAIN & ATMOSPHERE
-            try {
-                mapInstance.addSource('mapbox-dem', {
-                    'type': 'raster-dem',
-                    'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
-                    'tileSize': 512,
-                    'maxzoom': 14
-                });
-                mapInstance.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
-
-                mapInstance.addLayer({
-                    'id': 'sky',
-                    'type': 'sky',
-                    'paint': {
-                        'sky-type': 'atmosphere',
-                        'sky-atmosphere-sun': [0.0, 0.0],
-                        'sky-atmosphere-sun-intensity': 15
-                    }
-                });
-            } catch (e) {
-                console.warn("Terrain/Sky failed to load:", e);
-            }
-
-            // Initial Camera Move
-            mapInstance.easeTo({ pitch: 60, bearing: -15, duration: 2000 });
-
-            // 4. DRAWING TOOLS (MapboxDraw)
-            try {
-                if (MapboxDraw) {
-                    drawRef.current = new MapboxDraw({
-                        displayControlsDefault: false,
-                        controls: { polygon: true, trash: true },
-                        userProperties: true
-                    });
-                    mapInstance.addControl(drawRef.current, 'top-right');
-
-                    // Draw Update Listeners
-                    if (onBoundaryUpdate) {
-                        mapInstance.on('draw.update', onBoundaryUpdate);
-                        mapInstance.on('draw.create', onBoundaryUpdate);
-                        mapInstance.on('draw.delete', onBoundaryUpdate);
-                    }
+                if (e.sourceId) {
+                    console.warn('Map source error:', e.sourceId, e.error);
                 }
-            } catch (err) {
-                console.error("Error initializing MapboxDraw:", err);
-            }
-        });
+            });
 
-        // Cleanup
+            mapInstance.on('load', () => {
+                console.log("Map loaded, initializing plugins...");
+
+                // 2. Geocoder
+                try {
+                    if (MapboxGeocoder) {
+                        const geocoder = new MapboxGeocoder({
+                            accessToken: mapboxToken,
+                            mapboxgl: mb as any,
+                            countries: 'tr',
+                            language: 'tr',
+                            types: 'poi,address,place,locality',
+                            proximity: { longitude: 33.7715, latitude: 41.4245 }, // Default bias
+                            placeholder: 'Kampüs içinde ara (Örn: Rektörlük)',
+                            marker: false
+                        });
+                        mapInstance.addControl(geocoder, 'top-left');
+
+                        if (onGeocoderResult) {
+                            geocoder.on('result', onGeocoderResult);
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error initializing MapboxGeocoder:", err);
+                }
+
+                // 3. Terrain & Atmosphere
+                try {
+                    mapInstance.addSource('mapbox-dem', {
+                        'type': 'raster-dem',
+                        'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
+                        'tileSize': 512,
+                        'maxzoom': 14
+                    });
+                    mapInstance.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
+
+                    mapInstance.addLayer({
+                        'id': 'sky',
+                        'type': 'sky',
+                        'paint': {
+                            'sky-type': 'atmosphere',
+                            'sky-atmosphere-sun': [0.0, 0.0],
+                            'sky-atmosphere-sun-intensity': 15
+                        }
+                    });
+                } catch (e) {
+                    console.warn("Terrain/Sky failed to load:", e);
+                }
+
+                // Initial Camera Ease
+                mapInstance.easeTo({ pitch: 60, bearing: -15, duration: 2000 });
+
+                setIsMapLoaded(true);
+            });
+
+        } catch (err) {
+            console.error("Critical Error initializing Mapbox:", err);
+        }
+
         return () => {
-            if (mapRef.current) {
-                mapRef.current.remove();
-                mapRef.current = null;
+            console.log("Cleaning up Mapbox instance...");
+            if (map.current) {
+                map.current.remove();
+                map.current = null;
             }
+            setIsMapLoaded(false);
         };
-    }, [mapContainerRef, mapboxToken, initialCenter, initialZoom]);
+    }, [mapContainer, mapboxToken]); // initCenter/Zoom are initial only, shouldn't trigger re-init
 
-    return {
-        map: mapRef.current,
-        draw: drawRef.current,
-        isMapLoaded
-    };
-}
-
-export default useMapInitialization;
+    return { map: map.current, isMapLoaded };
+};

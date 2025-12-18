@@ -1,15 +1,15 @@
+import * as mapboxgl from 'mapbox-gl';
 import { useEffect } from 'react';
+import { useMapContext } from '../map/MapContext';
 
 interface WindOverlayProps {
-    map: any; // mapboxgl.Map - entegrasyon sonra typed yapılacak
-    isMapLoaded: boolean;
     windEnabled: boolean;
     features: GeoJSON.Feature[];
 }
 
 /**
  * WindOverlay - Rüzgar yönü ok layer'ı
- * 
+ *
  * OptimizationResults.tsx'den çıkarıldı (Faz 1.1.6)
  * Sorumluluklar:
  * - Wind arrow icon oluşturma
@@ -17,11 +17,11 @@ interface WindOverlayProps {
  * - Visibility toggle
  */
 export function WindOverlay({
-    map,
-    isMapLoaded,
     windEnabled,
     features
 }: WindOverlayProps) {
+    const { map, isMapLoaded } = useMapContext();
+
     useEffect(() => {
         if (!map || !isMapLoaded) return;
 

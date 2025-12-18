@@ -148,16 +148,29 @@ This document serves as the **Single Source of Truth** for the engineering and r
 
 *   **Work Package: FE-UX-001-A – OptimizationResults Refactor**
     *   **ID:** `FE-UX-001-A`
-    *   **Priority:** **[P0]** (Technical Debt Blocker)
+    *   **Priority:** **[Done]** (Technical Debt Blocker)
     *   **Type:** `FE`
     *   **Scope:** Split `OptimizationResults.tsx` into 5+ sub-components/hooks.
     *   **Targets:** Architecture Hygiene
     *   **Related Files:** `frontend/src/components/OptimizationResults.tsx`, `frontend/src/hooks/useMapInitialization.ts`, `frontend/src/layers/*`
     *   **Tasks:**
-        *   `[TASK]` Extract `useMapInitialization` hook. (Effort: S)
-        *   `[TASK]` Extract `useBuildingInteraction` hook. (Effort: M)
-        *   `[TASK]` Extract `WindOverlay` / `SolarOverlay` completely to `components/layers/`. (Effort: S)
-        *   `[TASK]` Create `MapContainer` component. (Effort: M)
+    *       `[x]` Extract `useMapInitialization` hook. (Effort: S)
+    *       `[x]` Extract `useBuildingInteraction` hook. (Effort: M)
+    *       `[x]` Extract `WindOverlay` / `SolarOverlay` completely to `components/layers/`. (Effort: S)
+    *       `[x]` Create `MapContainer` component. (Moved to FE-UX-002-A)
+
+*   **Work Package: FE-UX-002-A – MapContext & MapContainer Architecture**
+    *   **ID:** `FE-UX-002-A`
+    *   **Priority:** **[P0]** (Architecture)
+    *   **Type:** `FE`
+    *   **Scope:** Implement React Context for Mapbox instance to avoid prop drilling.
+    *   **Targets:** Pillar 9 (Codebase Architecture)
+    *   **Related Files:** `frontend/src/components/map/MapContext.tsx`, `MapContainer.tsx`
+    *   **Tasks:**
+    *       `[TASK]` Implement `MapContext` & `MapProvider`. (Effort: S)
+    *       `[TASK]` Create `MapContainer` wrapping `useMapInitialization`. (Effort: M)
+    *       `[TASK]` Refactor `OptimizationResults` to use Context. (Effort: M)
+    *       `[TASK]` Migrate hooks (`useBoundaryEditor`, `useBuildingInteraction`) to Context. (Effort: S)
 
 *   **Work Package: FE-UX-001-B – Type Safety & Strict Mode**
     *   **ID:** `FE-UX-001-B`
