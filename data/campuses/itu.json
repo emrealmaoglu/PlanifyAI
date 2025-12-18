@@ -1,0 +1,48 @@
+{
+  "name": "Istanbul Technical University",
+  "location": "Istanbul, Turkey",
+  "boundary": {
+    "type": "Polygon",
+    "coordinates": [[
+      [0, 0],
+      [1000, 0],
+      [1000, 1400],
+      [0, 1400],
+      [0, 0]
+    ]]
+  },
+  "existing_buildings": [
+    {
+      "id": "existing_main_building",
+      "type": "administrative",
+      "position": [500, 700],
+      "area": 5500,
+      "floors": 6
+    },
+    {
+      "id": "existing_library",
+      "type": "library",
+      "position": [300, 1100],
+      "area": 4000,
+      "floors": 4
+    },
+    {
+      "id": "existing_lab",
+      "type": "educational",
+      "position": [700, 300],
+      "area": 3500,
+      "floors": 3
+    }
+  ],
+  "constraints": {
+    "setback_from_boundary": 12,
+    "coverage_ratio_max": 0.28,
+    "far_max": 2.2,
+    "min_green_space_ratio": 0.42
+  },
+  "metadata": {
+    "total_area_m2": 1400000,
+    "student_count": 36000,
+    "established": 1773
+  }
+}

@@ -1,0 +1,636 @@
+
+Relational Reasoning in Spatial Design: A Comprehensive Analysis of Graph Neural Networks for Urban and Campus Planning
+
+
+I. Executive Summary
+
+This report provides an exhaustive analysis of Graph Neural Networks (GNNs) as a transformative methodology for learning and reasoning about spatial relationships in urban and campus planning. The analysis finds that GNNs represent a paradigm shift, moving beyond the limitations of grid-based (e.g., Convolutional Neural Network) and tabular (e.g., Multi-Layer Perceptron) models. By representing urban layouts as graphs—where buildings, zones, and intersections are nodes and their functional, physical, or perceptual relationships are edges—GNNs can directly model the complex, non-Euclidean, and relational nature of the built environment.
+The critical findings of this report are threefold.
+First, the most mature and high-impact application of GNNs in planning is as surrogate fitness evaluators.1 GNNs can be trained on data from computationally expensive, physics-based simulations (e.g., MATSim for traffic, CFD for microclimate) to learn a near-instantaneous mapping from a layout graph to a performance score (e.g., fitness, energy use, traffic volume).1 This approach overcomes the primary bottleneck in computational design. Validation benchmarks demonstrate that GNN surrogates achieve high predictive accuracy (e.g., R² scores of 0.76 to 0.86) while offering acceleration factors of three to four orders of magnitude—up to 28,670 times faster than the original simulation—enabling the use of large-scale evolutionary algorithms for multi-objective design optimization.4
+Second, standard GNN architectures are insufficient for rigorous spatial tasks. The report details the fundamental necessity of Geometric Deep Learning—specifically SE(2) equivariant GNNs—to ensure that model predictions are invariant to rotation and translation.7 Without this architectural guarantee, models fail to generalize, learning coordinate-system artifacts rather than true geometric relationships.9
+Third, GNNs provide a complete computational framework for the planning workflow. This includes:
+	•	Analysis: Classifying building functions and identifying critical infrastructure (node/edge prediction).10
+	•	Evaluation: The aforementioned surrogate fitness scoring (graph prediction).12
+	•	Synthesis: Generative GNNs (GNN-GANs) that can synthesize novel and diverse campus or floorplan layouts conditioned on user-defined constraints (e.g., functional adjacencies).13
+	•	Collaboration: Explainability (XAI) techniques, such as counterfactual explanations, transform the GNN from a "black box" evaluator into an interactive "design partner" that can provide actionable feedback (e.g., "This layout is 'infeasible' because of the proximity of Building A to Building B").15
+The report concludes by examining the primary challenges and their respective solutions. These include overcoming the over-smoothing problem in deep GNNs (e.g., via residual connections) 16, ensuring scalability to city-sized graphs (e.g., via inductive sampling like GraphSAGE) 17, modeling heterogeneous systems of roads, buildings, and utilities (e.g., via Heterogeneous GNNs) 19, and capturing dynamic processes like phased construction (e.g., via EvolveGCN).20
+
+II. Foundations: Graph Representations for Spatial Layouts
+
+
+From Euclidean Space to Relational Graphs: A New Planning Paradigm
+
+Urban planning, at its core, is the study of relationships: the relationship between residence and workplace, the interaction between traffic flow and road capacity, the connection between public space and community, and the interplay of access, visibility, and utility.22 The city itself is not a uniform grid but a complex, interconnected "system of systems"—a spatial network.22
+Traditional computational approaches, such as Convolutional Neural Networks (CNNs), are constrained by their grid-based data structures, forcing a Euclidean representation onto a fundamentally non-Euclidean problem. This "rasterization" of a city plan inherently loses the topological and relational information that defines it. Graph Neural Networks (GNNs) resolve this misalignment. GNNs are a class of deep learning architectures designed specifically to operate on graph-structured data, representing entities as nodes and their relationships as edges.25 This allows the model to learn directly from the topology, connectivity, and relational attributes of a spatial layout.
+
+Node Feature Engineering: Encoding Building Type, Function, and Geometry
+
+In a spatial graph, each entity—such as a building, a functional zone, an administrative parcel, or a street intersection—is represented as a node.10 The attributes of these entities are encoded as a node feature vector, $\mathbf{h}_v \in \mathbb{R}^d$.27 These features are critical, as they provide the GNN with the raw information from which to learn. They are generally categorized as follows:
+	•	Functional and Semantic Features: These describe the purpose and identity of the node. This can include one-hot or learned embeddings for building type (e.g., 'residential', 'commercial', 'academic'), specific function (e.g., 'library', 'dormitory', 'laboratory'), capacity (e.g., number of residents or employees), or a predicted "importance" score.10
+	•	Geometric and Physical Features: These describe the physical form of the node. Common features include building size/area 10, building height or number of storeys 29, and total volume. Research on functional-spatial graphs notes that "weighted nodes indicate the intended sizes" of spaces.30
+	•	Positional Features: This is the node's location, typically its centroid coordinates (x, y). In standard GNNs, these are often treated as two additional features within the $\mathbf{h}_v$ vector. However, as discussed in Section IV, this is a naïve approach that is not robust to rotation or translation. Advanced Geometric GNNs treat coordinates as a separate geometric vector $\mathbf{x}_v$, not a feature, to achieve physical equivariance.9
+
+Edge Feature Engineering: Modeling Distance, Visibility, and Infrastructural Flow
+
+Edges represent the relationships between nodes. These relationships can be binary (a connection exists) or, more powerfully, be described by a multi-dimensional edge feature vector, $\mathbf{e}_{uv} \in \mathbb{R}^p$.31 The definition of these edges is a critical modeling choice.
+	•	Proximity-Based Edges: The simplest edge attribute is a scalar representing the Euclidean distance, travel time, or cost between two nodes.22
+	•	Flow-Based Edges: In urban networks, edges can represent the capacity or measured flow of resources. This includes traffic flow volume 22, road capacity 33, utility connections (e.g., water, power) 22, or human mobility patterns derived from sensor data.34
+	•	Visibility-Based Edges: Drawing from Space Syntax theory, an edge can represent mutual visibility between two points.35 An edge exists if the line segment connecting two nodes does not intersect an obstacle.
+	•	Learned Relational Edges: Rather than defining edges by a single, human-defined metric (like distance), advanced GNNs can learn complex, multi-dimensional edge embeddings simultaneously with node embeddings.31 This allows the model to discover nuanced relationships that combine proximity, function, and flow.
+
+Comparative Analysis of Graph Construction Algorithms
+
+The algorithm used to construct the graph (i.e., to define the adjacency matrix $A$) is not a neutral preprocessing step. It is the first and most critical inductive bias of the model. The construction method explicitly defines "what is a relationship," thereby constraining what the GNN is permitted to learn. A planner is, in effect, embedding a hypothesis about their design (e.g., "proximity matters" vs. "visibility matters") before any learning begins.
+	•	Proximity-Based: k-Nearest Neighbors (k-NN) A directed edge is created from node $p$ to $q$ if $q$ is one of the $k$ nearest neighbors of $p$, based on Euclidean distance.38
+	•	Pros: It is simple to compute and results in a sparse graph where all nodes have a fixed degree (or out-degree), which can be computationally efficient and stabilize model training.39
+	•	Cons: The nearest neighbor relation is not symmetric ($p$ being a neighbor of $q$ does not imply $q$ is a neighbor of $p$).38 The choice of $k$ is an arbitrary hyperparameter, and a $k$-NN graph can struggle to correctly separate distinct spatial clusters that are close to one another.40
+	•	Geometric-Based: Delaunay Triangulation This method takes a "dual graph" approach to the urban fabric. One can first define a "primal graph" where street intersections are nodes and streets are edges.24 The Delaunay graph is then constructed by treating the faces of this primal graph (i.e., the building blocks or parcels) or the building centroids as nodes.24 Edges are then created between nodes that are geometrically adjacent (e.g., two building blocks that share a common street segment). This creates a planar graph where edges do not cross, representing a physically grounded and contiguous spatial layout.24
+	•	Perception-Based: Visibility Graph Analysis (VGA) This method, central to Space Syntax theory, directly models human spatial perception.36 A grid of points (nodes) is overlaid on a building or urban plan.35 An edge is created between any two nodes if they are "mutually visible," meaning the line segment connecting them is not occluded by an obstacle (e.g., a wall or another building).35 A GNN trained on a visibility graph learns functions of spatial perception and access, rather than simple proximity.
+
+Modeling Evolution: Spatio-Temporal Graphs for Phased Construction
+
+Urban and campus planning is not a static problem; it is a dynamic process that evolves over time, often in distinct phases.42 A building is not just "placed"; it is constructed, changing the flow and relationships of the entire system. This requires a dynamic graph representation.
+A Spatio-Temporal Graph (STG) is a sequence of graph "snapshots," $G = \{G_1,..., G_T\}$, where $G_t = (V_t, E_t, \mathbf{X}_t)$ represents the state of the layout at time $t$. The graph can change in two primary ways:
+	•	Changing Features (Dynamic Features, Static Graph): This is common in traffic or energy modeling. The underlying graph (the road network or building stock) is fixed, but the node and/or edge features (traffic volume, energy consumption, pedestrian flow) change at each time step.43
+	•	Changing Topology (Dynamic Graph): This model is required for phased construction.42 At each time step $t$, new nodes (buildings, facilities) and edges (roads, utilities) are added to the graph, fundamentally altering its topology. 42 explicitly models this, describing construction in "five levels of layers according to the stage of construction: creation of spaces, systems, division of spaces," etc.
+Specialized GNN architectures, discussed in Section XI, are required to learn from these complex, evolving graph sequences.
+
+III. Core GNN Architectures for Spatial Reasoning
+
+
+Mathematical Foundations: The Message Passing Neural Network (MPNN) Framework
+
+Most modern Graph Neural Networks, including GCN, GAT, and GraphSAGE, can be understood as instances of the general Message Passing Neural Network (MPNN) framework.26 This framework provides a powerful and generalizable abstraction for learning on graphs. An MPNN layer updates the feature vector (or "hidden state") $\mathbf{h}_i$ for each node $i$ by iteratively aggregating information from its local neighborhood $\mathcal{N}(i)$.47
+This process is defined by three core functions, repeated for $k$ layers (or "hops") of information passing 47:
+	•	Message Function ($\phi^{(k)}$): For each edge $(j, i) \in E$, a "message," $\mathbf{m}_{j \to i}^{(k)}$, is computed. This function can incorporate the features of the central node $i$, the neighbor node $j$, and the edge $e_{j,i}$ connecting them. $$\mathbf{m}_{j \to i}^{(k)} = \phi^{(k)}\left(\mathbf{h}_i^{(k-1)}, \mathbf{h}_j^{(k-1)}, \mathbf{e}_{j,i}\right)$$
+	•	Aggregation Function ($\bigoplus$): The central node $i$ aggregates all messages it receives from its neighbors $j \in \mathcal{N}(i)$ using a differentiable, permutation-invariant function (e.g., sum, mean, or max). $$\mathbf{m}_i^{(k)} = \bigoplus_{j \in \mathcal{N}(i)} \mathbf{m}_{j \to i}^{(k)}$$
+	•	Update Function ($\gamma^{(k)}$): The central node $i$ updates its hidden state by combining its state from the previous layer, $\mathbf{h}_i^{(k-1)}$, with the aggregated message $\mathbf{m}_i^{(k)}$. $$\mathbf{h}_i^{(k)} = \gamma^{(k)} \left( \mathbf{h}_i^{(k-1)}, \mathbf{m}_i^{(k)} \right)$$
+Different GNN architectures are simply different choices for these $\phi$, $\bigoplus$, and $\gamma$ functions.
+
+Neighborhood Aggregation: Graph Convolutional Networks (GCN)
+
+The Graph Convolutional Network (GCN) is a foundational GNN architecture that simplifies the MPNN framework.51 It is best described as an isotropic "neighborhood averaging" mechanism.51 In its common form, the message is simply the neighbor's feature vector, which is then normalized (based on node degrees) and summed (the aggregation step).
+	•	Use Case: GCNs are effective baselines for tasks on static, homogeneous graphs. They are widely used for traffic prediction (capturing spatial dependencies in road networks) 53 and for classifying elements in a static plan, such as in Building Information Models (BIM).54
+	•	Limitations: The GCN's aggregation is isotropic and unweighted—it treats every neighbor as equally important. This is a poor and inflexible assumption in spatial planning, where a neighboring highway and a neighboring park should have vastly different (and non-equal) influences on a residential building. In a comparative study on urban building energy modeling, the GCN baseline consistently yielded the highest errors among all tested GNN models.51
+
+Weighted Relational Importance: Graph Attention Networks (GAT)
+
+The Graph Attention Network (GAT) directly addresses the GCN's primary limitation.51 A GAT introduces an anisotropic aggregation by using a self-attention mechanism to learn adaptive weights, $\alpha_{ij}$, for the message from each neighbor $j$. The aggregated message becomes a weighted sum:
+
+$$\mathbf{m}_i^{(k)} = \sum_{j \in \mathcal{N}(i)} \alpha_{ij} \mathbf{m}_{j \to i}^{(k)}$$
+	•	Use Case: GATs are exceptionally well-suited for spatial planning because they can learn which spatial relationships matter most for a given task. For example, in a traffic prediction model, the GAT can learn to pay more attention to upstream road segments that have a higher causal impact on future congestion.53
+	•	Performance: A study on urban building energy modeling found that GATs, especially when enhanced with physics-aware edge features (like inter-building distance and orientation angles), were highly robust and accurate, reinforcing their ability to model complex, weighted interactions.51
+	•	Interpretability: The learned attention weights $\alpha_{ij}$ are inherently interpretable, providing a direct window into the model's reasoning (see Section IX).55
+
+Inductive Learning for Evolving Layouts: GraphSAGE
+
+The GraphSAGE (Graph SAmple and aggreGatE) architecture introduces a fundamentally different learning paradigm: it is inductive, not transductive.17
+	•	Transductive (GCN/GAT): These models learn a unique embedding vector for every single node present in the training graph. They are inherently transductive. If a new building (node) is added to the campus plan, or if the model is applied to an entirely new, unseen city, the model is "unaware" of these nodes and cannot generate embeddings for them without being completely retrained.56
+	•	Inductive (GraphSAGE): GraphSAGE does not learn node embeddings directly. Instead, it learns an aggregator function (or set of functions) that generates a node's embedding by sampling and aggregating features from its local neighborhood.17
+This distinction is the key to creating transferable planning policies. A planner's goal is not just to analyze one layout (Campus A) but to develop generalizable rules (policies) about what makes any layout good (e.g., "a good library is one with high walkability to dorms and low noise exposure"). A transductive GCN trained on Campus A is useless for Campus B. In contrast, GraphSAGE learns the aggregator function itself—it learns the policy of "how to aggregate neighborhood features to predict 'goodness'."
+This allows a GraphSAGE model trained on 100 successful campus layouts to be applied to a brand new, unseen layout (Campus B) to predict its fitness, or to classify its new, unseen buildings.51 A recent (2024) benchmark on urban building energy modeling confirmed this, finding that GraphSAGE "achieved the best overall predictive accuracy" and "strong predictive stability" across all districts, precisely because of its "expressive and flexible neighborhood aggregation".51
+
+Table 1: Architectural Comparison for Spatial Planning
+
+The selection of a GNN architecture is a design choice that maps directly to a specific planning problem. The trade-offs are summarized below.
+
+Architecture
+Core Principle
+Learning Mode
+Edge Feature Handling
+Interpretability
+Best-Fit Spatial Planning Task
+GCN
+Isotropic Neighborhood Averaging 51
+Transductive
+Pre-processing (weighted adjacency)
+Low (requires post-hoc XAI) [57]
+Static network analysis (e.g., road centrality), baseline classification 54
+GAT
+Anisotropic Weighted Aggregation 51
+Transductive
+Explicitly in attention mechanism 51
+High (via attention weights) 55
+Relational importance tasks (e.g., "what influences this building?"), physics-aware simulation 51
+GraphSAGE
+Inductive Aggregator Function 17
+Inductive
+Concatenated with neighbor features
+Low (requires post-hoc XAI)
+Generalization to unseen layouts/buildings, scalable analysis [51, 56]
+MPNN
+General Framework [45]
+N/A (depends on $\phi, \gamma$)
+Full (via $\phi$ function) [49]
+N/A
+Designing custom, relational-reasoning models (e.g., for physics surrogates)
+
+IV. Geometric Deep Learning: Enforcing Physical Symmetries
+
+
+The Necessity of Equivariance in Spatial Modeling
+
+A critical failure of standard GNNs (GCN, GAT, GraphSAGE) is that they are not suitable for most spatial layout tasks "out of the box." These models are designed to be permutation equivariant (the ordering of nodes in the feature matrix does not matter), but they are not rotation or translation equivariant.
+This presents a fundamental flaw for spatial reasoning. A layout's fitness score—based on, for example, walkability, solar exposure, or acoustic privacy—should be independent of whether the plan is oriented North-up or East-up, or whether it is located at (0, 0) or (1000, 1000) in a coordinate system.8
+However, a standard GNN takes node coordinates (x, y) as simple features.27 If the layout is rotated, these (x, y) values change. The GNN, seeing different feature inputs, will produce a different and arbitrary fitness score for the exact same layout. The model has not learned the underlying geometric relationships; it has merely overfit to coordinate-system artifacts.
+This necessitates the use of Geometric Deep Learning, which builds models that respect the physical symmetries of the data. The key concepts are 8:
+	•	Invariance: $f(g(\mathbf{X})) = f(\mathbf{X})$. The output is unchanged by a transformation $g$ (e.g., rotation). This is required for graph-level predictions, such as a single "fitness score" for a layout.
+	•	Equivariance: $f(g(\mathbf{X})) = g(f(\mathbf{X}))$. The output is transformed in the same way as the input. This is required when predicting geometric vectors, such as airflow or traffic flow fields, which should rotate along with the input layout.8
+
+SE(2) Equivariant GNNs for Rotation and Translation Invariance
+
+For 2D spatial planning, the relevant symmetry group is SE(2), the "Special Euclidean group" that governs 2D rotations and translations.7 An SE(2)-equivariant GNN guarantees that its predictions will be stable under any roto-translation of the input layout, a property demonstrated in recent robotics research.59
+
+Architectural Deep Dive: E(n)-Equivariant Graph Neural Networks (EGNN)
+
+The generalized solution for Euclidean symmetries is the E(n)-Equivariant Graph Neural Network (EGNN), a recent architecture that explicitly handles coordinates as geometric objects.9
+The core of the model is the E(n) Equivariant Graph Convolutional Layer (EGCL). Unlike a standard GNN layer, the EGCL takes two inputs for each node $i$: a standard feature vector $\mathbf{h}_i$ (e.g., building type, size) and a coordinate vector $\mathbf{x}_i \in \mathbb{R}^n$ (e.g., $\mathbb{R}^2$ for 2D plans).9
+The layer then carefully updates these two inputs while preserving their distinct properties 9:
+	•	Invariant Message ($\phi_e$): The message function computes messages using only quantities that are invariant to rotation and translation. This includes the node features $h_i$ and $h_j$, and, critically, the relative squared distance $\| \mathbf{x}_i - \mathbf{x}_j \|^2$. $$m_{ij} = \phi_e(h_i, h_j, \| \mathbf{x}_i - \mathbf{x}_j \|^2)$$
+	•	Equivariant Update (Coordinates, $\phi_x$): The coordinate vector $\mathbf{x}_i$ is updated using an equivariant operation. The model computes a weighted sum of the relative position vectors $(\mathbf{x}_i - \mathbf{x}_j)$. Since these relative vectors rotate with the input, their sum also rotates, preserving equivariance. $$\mathbf{x}_i^{(k)} = \mathbf{x}_i^{(k-1)} + C \sum_{j \neq i} (\mathbf{x}_i - \mathbf{x}_j) \cdot \phi_x(m_{ij})$$
+	•	Invariant Update (Features, $\phi_h$): The feature vector $\mathbf{h}_i$ (which is invariant, like "building type") is updated using only the invariant messages $m_{ij}$ and its previous state. $$h_i^{(k)} = \phi_h(h_i^{(k-1)}, m_i)$$
+By separating the equivariant (coordinate) and invariant (feature) update paths, the EGNN provides a principled, physically-grounded architecture for spatial learning.
+
+Achieving Scale Invariance: Generalizing from 50 to 500 Nodes
+
+A related but distinct challenge is scale invariance. Can a GNN trained on small 50-building campus layouts generalize to a 500-building urban plan?61 Standard GNNs often fail at this.61 A fixed number of $k$ message-passing layers explores a $k$-hop neighborhood, but the meaning of a 3-hop neighborhood is vastly different in a 50-node graph versus a 500-node graph.
+Solutions to this problem are an active area of research:
+	•	Inductive Models: Inductive models like GraphSAGE, which learn a general aggregator function rather than node-specific embeddings, have shown superior generalization to unseen graphs of varying sizes and contexts.17
+	•	Adaptive Architectures: Research has proposed GNNs that learn to adaptively terminate the message-passing process based on the graph's properties, rather than using a fixed number of layers.61
+	•	Data-Driven Generalization: Practical evidence suggests this is achievable. A 2024 study demonstrated that a GNN-based framework could robustly predict building storeys across the diverse urban environments of Boston, Melbourne, and Helsinki, mitigating data gaps and showing strong cross-city applicability.29
+
+V. Predictive and Generative Learning Tasks
+
+The GNN framework is not limited to a single task; it provides a comprehensive toolkit that maps directly to a planner's computational workflow. These tasks can be seen as a "computational value chain" that builds in complexity: from (1) analyzing existing components (Node/Edge tasks), to (2) evaluating new proposals (Graph tasks), to (3) synthesizing novel designs (Generative tasks).
+
+Node-Level Prediction: Classifying Building Function and Importance
+
+This is a node-level task, where the goal is to predict a label or a continuous value for each node in the graph.64
+	•	Application: The primary application is building type or function classification.10 Given a graph of building footprints, the GNN uses both the features of a building (e.g., its size and shape) and its neighborhood context (e.g., it is adjacent to three other small buildings and a road) to predict its function (e.g., 'residential').
+	•	Validation: This approach is highly effective. Studies show that GNNs "significantly outperform classical machine learning models that ignore the neighborhood".10 A GCN-based model achieved 89.9% accuracy in predicting the classes of building elements in a BIM model 54, and GraphSAGE has been used to classify elements in architectural floor plans.65
+
+Edge-Level Prediction: Optimizing Road Connectivity and Utility Flow
+
+This task involves predicting the existence, type, or value of an edge connecting two nodes.64
+	•	Application 1: Link Prediction. This answers the question: "Should a road, pathway, or utility line exist between node A and node B?".64 The model predicts the probability of a link, which can be used to suggest missing connections in a plan.
+	•	Application 2: Edge-based Regression. This predicts a continuous value for an edge. The most common use is traffic flow prediction, where the model predicts the future traffic volume or speed for each edge (road segment) in the road network.33 A 2024 study trained a GNN to predict the change in car volume on an edge as a result of a policy intervention (e.g., a lane closure).33
+	•	Application 3: Edge-based Classification. This ranks the importance of edges. For example, a GNN can be trained to identify the most "critical" road segments in a transportation network, which is essential for resilience planning and post-disaster recovery.11
+
+Graph-Level Regression: Predicting Layout Quality and Multi-Objective Fitness
+
+This task predicts a single label or value for the entire graph.64 To achieve this, the GNN architecture is augmented with a "readout" or "global pooling" layer (e.g., global_mean_pool or global_add_pool), which aggregates all final node embeddings into a single vector representation for the entire graph.25 This graph vector is then passed to a final feed-forward network for prediction.
+	•	Application: This is the core task for enabling GNNs as surrogate fitness evaluators (see Section VII). The GNN is trained to perform a graph-level regression, learning the mapping from an entire layout graph to a global performance score, such as a multi-objective "fitness" value 67, walkability score, total energy consumption, or even a predicted market value. For instance, GCN and GraphSAGE have been applied to predict house prices (a graph-level regression task) by modeling the spatial dependencies of a property and its neighbors.12
+
+Generative Design: Conditional Layout Generation from Constraints
+
+This is the most complex task: generating a new, realistic, and feasible graph $G' = (V', E', \mathbf{X}')$ that adheres to a set of input constraints.14
+	•	Application: Automatically generating novel campus layouts or residential floor plans.13
+	•	Methodology: A 2023 paper details this for campus layout generation using a GNN-based Generative Adversarial Network (GAN), specifically House-GAN++.13
+	•	Input: The user provides design constraints as a "functional bubble connection graph" (e.g., Node 1: 'Library', Node 2: 'Dorms', Edge: 'Adjacency').
+	•	Generator: A GNN (specifically, a Convolutional Message Passing Neural Network, or Conv-MPN) takes this constraint graph as input and generates a corresponding 2D functional zoning layout.
+	•	Discriminator: A second GNN (also a Conv-MPN) acts as the "critic." It is trained to distinguish real, successful campus layouts from the generator's fakes. This adversarial process forces the generator to learn the complex, implicit rules of realistic and functional spatial relationships.13
+
+Table 2: GNN Learning Tasks in Urban Planning
+
+This table provides a summary mapping planning problems to their corresponding GNN task type.
+
+Task Level
+Planning Question
+GNN Output
+Example Application
+SOTA Reference(s)
+Node-Level
+"What is this building's function or importance?"
+Node Label / Value
+Building type classification
+[10, 65]
+Edge-Level
+"Should a road connect A and B?" / "What is the flow on this road?"
+Edge Probability / Value
+Road connectivity or traffic volume prediction
+[11, 33]
+Graph-Level
+"How 'good' is this entire layout?" (e.g., fitness, quality, price)
+Graph Score / Class
+Layout fitness scoring for EA; house price prediction
+[12, 25]
+Generative
+"Create a new layout that meets these adjacency constraints."
+New Graph $G'$
+Conditional campus/floorplan layout generation
+13
+
+VI. GNNs for Spatial Constraint Modeling and Feasibility Analysis
+
+A primary challenge in generative design is ensuring that generated layouts are not just novel, but also feasible—that they adhere to a complex set of explicit (e.g., zoning laws) and implicit (e.g., functional adjacencies) constraints. GNNs offer powerful new methods for learning, predicting, and enforcing these constraints.
+
+Learning Implicit Constraints from Successful Layouts
+
+GNNs excel at learning "complex spatial relationships" 28 and "emergent spatial structure" 34 directly from data. A GNN trained on a large dataset of successful, existing layouts can learn the implicit, unwritten rules of good design. For example, it can learn that dining halls are typically near dormitories, that noisy facilities are isolated from quiet ones, or that administrative buildings are centrally located. 34 demonstrated that GNN embeddings can capture complex urban phenomena like "segregation, disparate facility distribution, and human mobility" purely from data.
+
+Feasibility Prediction for Partial Layouts
+
+GNNs can transform feasibility checking from a slow, post-design validation step into an interactive, real-time feedback loop. Traditional workflows require a planner to create a full layout, then run a separate script to check for constraint violations.
+GNNs enable "feasibility prediction on partial layouts." A model can be trained to evaluate a design as it is being drawn.
+	•	Generative Completion: The MaskPLAN model (2024) is a generative GNN that takes partial input (e.g., just the site boundary and the location of two buildings) and "completes" the rest of the layout.71 It uses "cross-attribute learning" to ensure the generated layout remains feasible and practical at every stage of completion.71
+	•	Anomaly Detection: "Feasibility Prediction" can be framed as an Anomaly Detection task.72 A GNN is trained on a large dataset of only feasible layouts, learning a rich distribution of "what is feasible." When given a new, partial layout, it can detect if it is "Out-of-Distribution" (OoD) and therefore likely infeasible, long before the design is finished.72
+
+Constraint Violation Detection in Generative Workflows
+
+Beyond a simple binary "feasible/infeasible" label, GNNs can be integrated into the optimization objective itself. GNNs can be trained to solve Constraint Satisfaction Problems (CSPs).73 Recent methods (2024) propose training a GNN using a nested optimization scheme where the model learns to simultaneously optimize an objective (e.g., maximize fitness) and minimize a "measure of constraint violation".74 This provides the designer with two distinct outputs: a fitness score and a "constraint violation" score, offering far richer feedback.
+
+Transferable Constraint Knowledge Across Planning Projects
+
+A key goal of "Geo-AI" is to develop models whose knowledge is transferable.76 Can a GNN that has learned the "implicit constraints" of planning in Boston 29 apply that knowledge to a new project in London?92
+The evidence suggests this is possible. A study on GNNs for urban structure analysis found that "embeddings generated by a model trained on a different county can capture 50% to 60% of the emergent spatial structure in another county".34 This capability is enabled by inductive models like GraphSAGE 17, which, as described in Section III, learn transferable aggregation rules (policies) rather than layout-specific node embeddings. This allows a GNN to act as a repository of "constraint knowledge" that can be transferred across projects.
+
+VII. Hybrid Intelligence: GNNs in Evolutionary Algorithms
+
+The integration of GNNs with Evolutionary Algorithms (EAs) represents one of the most powerful and validated applications in computational spatial design. This hybrid approach, where the GNN acts as a high-speed surrogate for slow simulations, solves the primary bottleneck that has historically limited simulation-driven optimization.
+
+The GNN as a Surrogate Fitness Evaluator: Accelerating Optimization
+
+This GNN-as-surrogate is arguably the "killer application" for GNNs in generative design. The concept is straightforward but its implications are profound:
+	•	The Problem: Evolutionary Algorithms (GAs, etc.) are excellent search algorithms for navigating the vast, combinatorial design space of a spatial layout.67 However, they rely on a fitness function to evaluate the quality of thousands or millions of candidate layouts.67
+	•	The Bottleneck: In spatial planning, the "fitness" of a layout is determined by running complex, computationally expensive physics-based simulations:
+	•	Traffic: MATSim (Multi-Agent Transport Simulation).4
+	•	Microclimate: CFD (Computational Fluid Dynamics) for wind/air-flow.3
+	•	Energy: EnergyPlus or similar models for thermal performance.51
+	•	Structural: FEM (Finite Element Method) for structural analysis. These simulations can take minutes or hours for a single layout evaluation, making any large-scale EA optimization computationally unfeasible.79
+	•	The Solution: A GNN is trained as a surrogate model (or metamodel).2 It is trained on a dataset generated by the expensive simulator (e.g., 1,000 layouts and their corresponding simulation-derived fitness scores).1 The GNN learns the complex, non-linear mapping: Graph(Layout) -> Fitness_Score.
+	•	The Result: This GNN, once trained, can perform the evaluation in milliseconds.80 The EA can now call the GNN surrogate as its fitness function, allowing it to evaluate millions of design candidates in the time it previously took to evaluate one.
+
+Architectural Deep Dive: GNN Surrogates for Simulation
+
+	•	Traffic Simulation (MATSim): A 2025 paper details a GNN surrogate for MATSim.4 The input is a dual graph (nodes=road segments, edges=connections). Node features include static attributes (e.g., capacity, length) and variable attributes (e.g., a policy-based capacity reduction). The architecture uses PointNet, Transformer, and GAT layers to predict the change in car volume on each edge.4
+	•	Structural Simulation: GNN-GA frameworks are used to optimize structural parameters like mass and stiffness. A 2023 study used a GCN surrogate for structure-borne noise analysis in complex fluid-structure systems.6
+	•	Microclimate (CFD) & Drainage: GNNs are being developed to surrogate slow CFD simulations for urban airflow and temperature 3 and to provide real-time hydraulic predictions for urban drainage networks.81
+
+Table 3: Benchmark Results of GNN Surrogates (Validation)
+
+The "Validation" requirement of the user query—specifically R² scores and speedup factors—is directly addressed by recent benchmarks. The GNN-as-surrogate approach is not theoretical; it is practically validated.
+
+Simulation Domain
+Baseline Model
+GNN Architecture
+Prediction Task
+Validation (R² Score)
+Speedup Factor
+Reference(s)
+Urban Traffic
+MATSim (Paris)
+GAT-based (PointNet, Transformer)
+Change in car volume (Edge Reg.)
+0.76
+"milliseconds vs. hours"
+4
+Structural Noise
+Coupled BEM-FEM
+GCN + 2D CNN
+Sound pressure level (Graph Reg.)
+0.86
+"milliseconds vs. hours"
+6
+Epidemiology
+Mechanistic Metapopulation Model
+ARMAConv
+Pandemic spread
+10-27% MAPE
+Up to 28,670x
+[5]
+Aerodynamics
+Full-order optimization
+GNN (unspecified)
+Shape optimization
+"reasonable accuracy"
+"three orders of magnitude" (1,000x)
+[84]
+Urban Drainage
+Physics-based Model
+GNN (unspecified)
+Real-time hydraulic flow
+Not specified
+"accelerates... for real-time use"
+81
+
+GNN-Guided Genetic Operators: Informed Crossover and Mutation
+
+The GNN's role in the EA can extend beyond passive evaluation. Its learned spatial knowledge can be used to actively guide the genetic operators, making the search more intelligent.67
+	•	GNN-Guided Mutation: Instead of randomly selecting a building to relocate (a random mutation), the algorithm can use a GNN-based saliency map (see Section IX) to identify the node (building) that is contributing most negatively to the fitness score, and preferentially mutate that node.
+	•	GNN-Guided Crossover: Instead of randomly swapping building sets between two "parent" layouts, the GNN can be used to identify functionally related subgraphs (e.g., "the academic quad" or "the residential village"). The crossover operator can then swap these entire semantic modules, creating more coherent and meaningful "child" layouts.
+
+Quantifying Novelty: GNNs for Population Diversity Measurement
+
+A successful EA must balance exploitation (finding high-fitness solutions) and exploration (maintaining a diverse population to avoid premature convergence to a suboptimal local minimum).86 GNNs offer a semantically rich way to measure this diversity.
+Traditional diversity is often measured in the genotype (e.g., the string representation of the layout) or phenotype (the fitness score). Both are poor metrics for layouts. GNNs can measure diversity at the structural level.88 By extracting GNN-based embeddings for each graph in the population, the EA can "compute the dissimilarity between any two sets of graphs".88
+A novel framework called Graph Neural Evolution (GNE) models the entire EA population as a graph, where each node is a layout and edges represent their similarity. A GNN is then applied to this graph to explicitly analyze the population's structure and control the balance of exploration and exploitation.89
+
+VIII. State-of-the-Art Applications and Benchmarks (2020-2025)
+
+The period from 2020 to 2025 has seen a rapid acceleration in the application of GNNs to spatial problems, moving from theoretical proposals to validated, large-scale applications.
+
+Urban Morphology Analysis and Functional Zone Classification
+
+GNNs are proving to be superior to CNNs for analyzing urban morphology because they "preserv[e] topological features" of street networks, which is essential for "precise classification of urban street network morphology".90 Recent and forthcoming (2025) research explicitly focuses on using explainable GNNs to discover the link between "core forms of urban morphology" and "urban functions".91 In a large-scale case study of Greater London, GNN-based graph autoencoders were successfully used for geodemographic classification.92
+
+Surrogates for Simulation: Traffic Flow and Urban Microclimate (CFD)
+
+This is currently the most mature application area.
+	•	Traffic Flow: A large body of work (2020-2025) reviews the use of Spatio-Temporal GNNs (STGNNs) for predicting traffic flow and speeds.93 These models combine GNNs (for spatial dependencies) with RNNs (for temporal dependencies).53 Several recent papers (2024) specifically review the use of GNNs as surrogates for strategic transport planning models.2
+	•	Urban Microclimate (CFD): This is an emerging but critical field. GNNs are being developed to surrogate the extremely slow CFD simulations required for urban-scale airflow, wind, and temperature modeling.3
+
+Automated Building Footprint and Generative Spatial Layouts
+
+	•	Building Footprint Generation: While CNNs are used for initial image segmentation from satellite data, GNNs are being applied as a refinement step. The GNN can model the relationships between boundary points to enforce geometric regularity, achieving the "precise delineation of boundaries" where pixel-based CNNs often fail.100
+	•	Generative Spatial Layouts: This is the full generative task. Key 2020-2024 papers demonstrate:
+	•	Campus Layout Generation: Using GNN-GANs (House-GAN++) to generate campus-scale functional zoning from "bubble diagram" constraints.13
+	•	Floorplan Generation: Generating residential floorplans conditioned on constraints like room type and adjacency.14
+
+Key Datasets and Benchmarks for Spatial GNNs
+
+Unlike computer vision (e.g., ImageNet), the field of spatial GNNs lacks a single, centralized benchmark. Datasets are often fragmented and domain-specific. However, several key public datasets have emerged:
+	•	Mobility Data: A 2024 paper introduced two new, large-scale, graph-based benchmarks for urban interpolation:
+	•	Strava: A dataset of cycling data from Berlin.
+	•	NYC Taxi: A dataset of taxi trip data from New York City.43
+	•	Geodemographic Data: The Greater London Output Area Classification (OA-level census data) was used as a benchmark for GNN-based geodemographic classification.92 Other NYC-based datasets are also common.102
+	•	General Urban Data: A 2024 survey of GNNs in urban intelligence notes the common use of heterogeneous data sources, including human mobility data, location-based (Point-of-Interest) transaction data, regional air quality data, and social connection data.103
+
+IX. Interpretability and Explainability (XAI) for Spatial GNNs
+
+A GNN that simply outputs a "fitness score" of 0.3 for a layout is a "black box" and of limited use to a designer.104 They need to know why the score is low. Explainability (XAI) methods transform the GNN from a passive "judge" into an active "design partner" that can provide actionable, interpretable feedback.
+
+Visualizing Spatial Importance: GAT Attention Mechanisms
+
+The GAT architecture (Section III) provides a built-in, "free" XAI tool.51 To compute a node's update, the model learns an attention weight, $\alpha_{ij}$, for every one of its neighbors. These weights, which sum to 1, represent the "importance" the model assigns to each neighbor.
+	•	Application: A planner can directly visualize these attention weights on the layout plan.55
+	•	Example: A GAT model predicts a low "walkability" score for a 'Library' node. The planner inspects the model's attention. They see the GAT assigned a very high attention weight (e.g., $\alpha = 0.6$) to a nearby 'Highway' node and very low weights to 'Dormitory' nodes. The reason for the low score is immediately obvious: the model has learned that proximity to highways (likely indicating noise and poor access) is a strong negative predictor for this task.
+
+Identifying Critical Relationships: Graph Saliency Maps
+
+This is the graph-based analogue of a "heatmap" in a CNN.57
+	•	Method: A saliency map is computed by calculating the gradient of the final output (e.g., the graph-level fitness score) with respect to the input node and/or edge features.106
+	•	Output: The map highlights a "salient subgraph"—the set of most critical nodes and edges that were most responsible for the final prediction.107
+	•	Example: A planner submits a layout that receives a high fitness score. The GNN's saliency map highlights three components: the 'Dormitory' node, the 'Dining Hall' node, and the edge between them. This tells the planner that this specific "Dorm-Dining" adjacency was a primary driver of the high score, reinforcing this design decision.
+
+Answering "What If?": Counterfactual Explanations for Layout Decisions
+
+This is the most powerful XAI tool for design. A counterfactual (CF) explanation answers the question: "What is the minimal change I could make to my layout to change the prediction?".15
+	•	Method: Models like CF-GNNExplainer are designed to find the smallest perturbation to the input graph (e.g., the fewest edge deletions) that will flip the model's prediction (e.g., from "infeasible" to "feasible," or "low-fitness" to "high-fitness").15
+	•	Example (as a dialogue):
+	•	Planner: "My layout was predicted as 'infeasible'."
+	•	GNN (CF): "Your layout is 'infeasible' because of the adjacency (edge) between 'Building A' (a noisy generator) and 'Building B' (a library)."
+	•	Planner: "How do you know this is the specific problem?"
+	•	GNN (CF): "My analysis shows that if you remove the road (delete the edge) between 'A' and 'B', my prediction flips to 'feasible'. This is the minimal change required to fix the plan.".15
+This transforms the GNN into a collaborative tool that provides concrete, actionable design recommendations.
+
+X. Implementation Guide: From Layout to Trained Model
+
+
+Library Selection: A Comparative Analysis of PyTorch Geometric (PyG) and DGL
+
+The two dominant, mature, and open-source Python libraries for GNN development are PyTorch Geometric (PyG) and the Deep Graph Library (DGL).110
+	•	PyTorch Geometric (PyG): Built as a direct extension to PyTorch, PyG is lauded for its ease of use and tight integration with the PyTorch ecosystem.113 It has exceptionally strong momentum and is the recommended backend for NVIDIA's PhysicsNeMo (a toolkit for physics-based GNNs). NVIDIA benchmarks show PyG can enable performance optimizations up to 30% faster than a comparable DGL implementation.115
+	•	Deep Graph Library (DGL): DGL is backend-agnostic, supporting PyTorch, TensorFlow, and MXNet.112 It has historically had very strong support for memory management and scalable sampling on large graphs.116
+Recommendation: For new projects in spatial planning, physics simulation, and generative design, PyTorch Geometric (PyG) is the recommended choice. Its superior performance in physics-simulation contexts 115 and its seamless PyTorch integration 116 make it an ideal fit for the applications outlined in this report.
+
+Table 4: Library Feature Comparison (PyG vs. DGL)
+
+
+Feature
+PyTorch Geometric (PyG)
+Deep Graph Library (DGL)
+Core API
+Tightly integrated with PyTorch. Feels like a natural extension.[113]
+Backend-agnostic API (PyTorch, TF, MXNet).112
+Data Handling
+Data and Batch objects are simple and clear. Excellent Dataset support.[113]
+DGLGraph object is the central component.
+Performance
+Excellent. Recommended by NVIDIA for physics GNNs; up to 30% faster.115
+Good, but may be slower in some GNNs vs. PyG.[115, 116]
+Scalability/Sampling
+Strong support via NeighborSampler, GraphSAINT, ClusterGCN, etc..116
+Historically a key strength with excellent sampling support.116
+Heterogeneous Graphs
+Natively supported via HeteroData and to_hetero wrappers.
+Natively supported.
+Documentation
+Excellent, with many tutorials.[113]
+Excellent, with many tutorials.
+
+Data Preprocessing: From Spatial Coordinates to Graph Data Objects
+
+A GNN cannot ingest a CAD file or a shapefile directly. The spatial layout must be converted into a graph data object. Using PyTorch Geometric (PyG) as the standard, the workflow is as follows:
+	•	Input: A set of $N$ buildings, e.g., [(id_1, x_1, y_1, feats_1),..., (id_N, x_N, y_N, feats_N)].
+	•	Node Features ($\mathbf{X}$): Create a feature matrix $\mathbf{X}$ of shape [N, num_node_features] from the feats_i (e.g., building type, size).
+	•	Position Matrix ($\mathbf{pos}$): Create a coordinate matrix $\mathbf{pos}$ of shape [N, 2] from the (x_i, y_i) coordinates.
+	•	Graph Construction: Apply a construction algorithm (e.g., $k$-NN or Delaunay, see Section II) to the $\mathbf{pos}$ matrix to get a list of edges.
+	•	Edge Index ($\mathbf{edge\_index}$): Convert the edge list into a sparse coordinate (COO) format tensor of shape [2, num_edges].114 This is the PyG standard and is far more memory-efficient than a dense $N \times N$ adjacency matrix.
+	•	Edge Features ($\mathbf{edge\_attr}$): (Optional) For each edge $(i, j)$ in $\mathbf{edge\_index}$, compute its features. For example, the Euclidean distance: dist = ||pos[i] - pos[j]||. This creates an $\mathbf{edge\_attr}$ tensor of shape [num_edges, num_edge_features].
+	•	PyG Data Object: Combine all components into a single Data object: data = torch_geometric.data.Data(x=X, pos=pos, edge_index=edge_index, edge_attr=edge_attr)
+
+Python Code Example 1: Spatial Graph Construction (k-NN and Delaunay)
+
+This executable example demonstrates the preprocessing workflow, converting a set of 100 building centroids into PyG Data objects using both $k$-NN and Delaunay triangulation.
+
+Python
+
+
+import torch import numpy as np from scipy.spatial import Delaunay import torch_geometric.data from torch_geometric.nn import knn_graph  # 1. Define synthetic building data (100 buildings, 5 features each) NUM_BUILDINGS = 100 NUM_FEATURES = 5  # Node features (e.g., type, size, height, etc.) node_features = torch.rand((NUM_BUILDINGS, NUM_FEATURES))  # Node positions (x, y coordinates) node_positions = torch.rand((NUM_BUILDINGS, 2)) * 1000  # 1000x1000m site  # 2. Graph Construction Method 1: k-Nearest Neighbors (k-NN) # k=5: Connect each building to its 5 closest neighbors k = 5 knn_edge_index = knn_graph(node_positions, k=k, loop=False)  # (Optional) Compute edge attributes (Euclidean distance) for k-NN row, col = knn_edge_index dist_knn = torch.norm(node_positions[row] - node_positions[col], p=2, dim=-1) knn_edge_attr = dist_knn.unsqueeze(-1)  # Shape [num_edges, 1]  # 3. Create PyG Data object for k-NN graph data_knn = torch_geometric.data.Data(     x=node_features,     pos=node_positions,     edge_index=knn_edge_index,     edge_attr=knn_edge_attr ) print(f"k-NN Graph:\n{data_knn}") print(f"  - Num. Nodes: {data_knn.num_nodes}") print(f"  - Num. Edges: {data_knn.num_edges}")   # 4. Graph Construction Method 2: Delaunay Triangulation # Use SciPy to compute the triangulation np_pos = node_positions.numpy() tri = Delaunay(np_pos) simplices = tri.simplices  # List of triangles [i, j, k]  # Convert triangles to a sparse edge list (undirected, no duplicates) edges = set() for s in simplices:     edges.add(tuple(sorted([s, s])))     edges.add(tuple(sorted([s, s])))     edges.add(tuple(sorted([s, s])))  edge_list = torch.tensor(list(edges), dtype=torch.long).t().contiguous() delaunay_edge_index = torch_geometric.utils.to_undirected(edge_list)  # (Optional) Compute edge attributes (Euclidean distance) for Delaunay row, col = delaunay_edge_index dist_delaunay = torch.norm(node_positions[row] - node_positions[col], p=2, dim=-1) delaunay_edge_attr = dist_delaunay.unsqueeze(-1)  # 5. Create PyG Data object for Delaunay graph data_delaunay = torch_geometric.data.Data(     x=node_features,     pos=node_positions,     edge_index=delaunay_edge_index,     edge_attr=delaunay_edge_attr ) print(f"\nDelaunay Graph:\n{data_delaunay}") print(f"  - Num. Nodes: {data_delaunay.num_nodes}") print(f"  - Num. Edges: {data_delaunay.num_edges} (undirected)")  
+
+Python Code Example 2: Training a GNN for Fitness Prediction (Graph Regression)
+
+This executable example builds on the previous step. It defines a synthetic Dataset of random layouts, defines a GAT model to predict a "fitness" score (a graph-level regression task), and runs a full training and validation loop, reporting the R² score as requested.
+
+Python
+
+
+import torch import torch.nn.functional as F from torch_geometric.data import Data, Dataset, DataLoader from torch_geometric.nn import GATConv, global_mean_pool  # --- 1. Define a Synthetic Layout Dataset --- # We create a dataset of 100 random layouts (graphs). # The "fitness" (y) will be a synthetic score: # We'll use 1 / (1 + mean_distance_to_center) # This simulates a "walkability" score (closer clusters are better).  class SyntheticLayoutDataset(Dataset):     def __init__(self, num_samples=100, num_nodes=50, num_features=8):         super(SyntheticLayoutDataset, self).__init__()         self.num_samples = num_samples         self.num_nodes = num_nodes         self.num_features = num_features      def len(self):         return self.num_samples      def get(self, idx):         # Create a random layout         nodes_x = torch.rand(self.num_nodes, num_features)         nodes_pos = torch.rand(self.num_nodes, 2) * 100  # 100x100 site          # Use k-NN graph construction (k=6)         edge_index = knn_graph(nodes_pos, k=6, loop=False)          # Compute the graph-level label (fitness score)         center_point = torch.tensor([50.0, 50.0])         mean_dist_to_center = torch.norm(nodes_pos - center_point, p=2, dim=-1).mean()         # Fitness score: higher is better         y = 1.0 / (1.0 + mean_dist_to_center)          return Data(x=nodes_x, pos=nodes_pos, edge_index=edge_index, y=y.unsqueeze(0))  # Create training and test datasets train_dataset = SyntheticLayoutDataset(num_samples=800) test_dataset = SyntheticLayoutDataset(num_samples=200)  train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True) test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)  # --- 2. Define the GNN Model (GAT) for Graph Regression --- # This model will predict a single fitness score for an entire graph.  class GAT_FitnessPredictor(torch.nn.Module):     def __init__(self, in_features, hidden_features, out_features=1, heads=4):         super(GAT_FitnessPredictor, self).__init__()         self.conv1 = GATConv(in_features, hidden_features, heads=heads)         self.conv2 = GATConv(hidden_features * heads, hidden_features, heads=heads)                  # Readout layer: aggregates all node features into one graph feature         self.readout = global_mean_pool                  # Final linear head for regression         self.out_head = torch.nn.Linear(hidden_features * heads, out_features)      def forward(self, data):         x, edge_index, batch = data.x, data.edge_index, data.batch          # GNN layers         x = F.relu(self.conv1(x, edge_index))         x = F.relu(self.conv2(x, edge_index))          # Readout layer (graph-level representation)         x = self.readout(x, batch)                  # Prediction         x = self.out_head(x)         return x  # --- 3. Training and Validation Loop --- device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') model = GAT_FitnessPredictor(in_features=8, hidden_features=16, heads=4).to(device) optimizer = torch.optim.Adam(model.parameters(), lr=0.005) loss_fn = torch.nn.MSELoss()  # Mean Squared Error for regression  def train():     model.train()     total_loss = 0     for data in train_loader:         data = data.to(device)         optimizer.zero_grad()         out = model(data)         loss = loss_fn(out, data.y)         loss.backward()         optimizer.step()         total_loss += loss.item() * data.num_graphs     return total_loss / len(train_loader.dataset)  def test(loader):     model.eval()     all_preds =     all_labels =     with torch.no_grad():         for data in loader:             data = data.to(device)             pred = model(data)             all_preds.append(pred.cpu())             all_labels.append(data.y.cpu())          all_preds = torch.cat(all_preds, dim=0).squeeze()     all_labels = torch.cat(all_labels, dim=0).squeeze()          # Calculate R-squared (R²) score     ss_tot = torch.sum((all_labels - all_labels.mean())**2)     ss_res = torch.sum((all_labels - all_preds)**2)     r2 = 1 - (ss_res / ss_tot)     return r2.item()  print("Starting GNN training for fitness prediction...") for epoch in range(1, 21):     loss = train()     if epoch % 5 == 0:         train_r2 = test(train_loader)         test_r2 = test(test_loader)         print(f'Epoch: {epoch:02d}, Loss: {loss:.6f}, Train R²: {train_r2:.4f}, Test R²: {test_r2:.4f}')  print("Training complete.") 
+
+Training Strategies and Loss Functions for Spatial Tasks
+
+The choice of loss function is determined by the learning task.
+	•	Regression (Fitness/Flow Prediction): The standard loss function is Mean Squared Error (MSE) (torch.nn.MSELoss) or Mean Absolute Error (MAE).117 MSE is generally preferred as it heavily penalizes large errors.
+	•	Classification (Building Type): The standard loss is Cross-Entropy Loss (torch.nn.CrossEntropyLoss).97
+	•	Link Prediction (Road Connectivity): This is treated as a binary classification on edges, often using Binary Cross-Entropy (BCE) Loss.
+A critical and unresolved challenge in this domain is the validity of standard loss functions for spatial data.118 Machine learning-based regression approaches, and their loss functions like MSE, implicitly assume that the observations (and their errors) are independent.118 In spatial planning, this assumption is fundamentally false due to spatial autocorrelation (i.e., Tobler's First Law: "near things are more related than distant things"). The errors (residuals) of a GNN model on a spatial graph are likely to be spatially autocorrelated, which can bias the model's parameters. While standard loss functions are the current practice 117, the development of spatially-aware loss functions that can account for or even penalize this spatial autocorrelation in the residuals remains a major frontier for Geo-AI research.
+
+XI. Critical Challenges and Future Directions
+
+Despite their successes, applying GNNs to real-world, large-scale spatial planning presents significant algorithmic and computational challenges.
+
+Algorithmic Solutions for the Over-smoothing Problem in Deep GNNs
+
+	•	Problem: The "over-smoothing" problem is a primary bottleneck for GNNs.119 As a GNN's layers stack, each node's receptive field (its $k$-hop neighborhood) expands. After a sufficient number of layers, the receptive field for all nodes converges to the entire graph. Consequently, all node embeddings converge to a single, indistinct value, "smoothing" away all local detail.120 For spatial planning, where local neighborhood relationships are paramount, this loss of information is fatal.
+	•	Solutions:
+	•	Architectural: Incorporating residual or skip connections (similar to ResNet) allows the model to carry forward information from earlier, more localized layers.16 New normalization methods are also being explored to help gradients flow in deep GNNs.119
+	•	Regularization: DropEdge is a technique that randomly drops a percentage of edges during each training epoch, forcing the model to learn more robust, less co-dependent representations.16
+	•	Decoupling: A 2024 proposal introduces a "dual-dimensional decoupling approach" to separate the representation learning from the class boundary learning, aiming to mitigate over-smoothing at an instance level.121
+
+Scalability: Strategies for Large-Scale Urban Graphs (1000+ Nodes)
+
+	•	Problem: Full-batch GNN training requires computing the entire graph and all its messages for every gradient step. For a city-scale graph with thousands or millions of nodes, this is computationally unfeasible and will not fit in GPU memory.18
+	•	Solutions:
+	•	Neighborhood Sampling (Inductive Models): This is the most effective solution. Instead of using the full graph, inductive models like GraphSAGE (Section III) sample a small, fixed-size neighborhood for each node in a mini-batch.17 This decouples the computational cost from the total graph size.
+	•	Distributed Training: For training on massive, billion-edge graphs, specialized distributed systems like "G3" have been developed. G3 uses hybrid parallelism to scale GNN training across a cluster of machines.18
+	•	Subgraph-based Training: An alternative approach is to decompose the large graph into many "localized subgraphs" (e.g., individual buildings and their 2-hop neighbors) and train the GNN on these smaller, independent graphs.10
+
+Modeling Real-World Complexity: Heterogeneous Graph Neural Networks (HGN)
+
+	•	Problem: Real urban layouts are not homogeneous (e.g., building-to-building). They are heterogeneous systems composed of many different types of nodes (e.g., 'buildings', 'road intersections', 'bus stops', 'parks') and types of edges (e.g., 'is-adjacent-to', 'is-connected-by-utility', 'has-pedestrian-flow-to').19 A standard GNN, which uses one set of weights for all nodes and edges, cannot capture this complexity.
+	•	Solutions:
+	•	Relational GCN (R-GCN): This architecture learns a different GNN weight matrix $W_r$ for each relation (edge) type $r$ in the graph.28 R-GCNs are effective for integrating multiple data sources, such as OpenStreetMap, POI data, and satellite imagery.28
+	•	Heterogeneous Attention Network (HAN): HAN introduces a hierarchical attention mechanism.124 It first uses "meta-paths" (e.g., Building $\to$ Road $\to$ Building) to define complex relationships. It then applies attention at two levels: (1) node-level (which neighbors in a meta-path are important?) and (2) semantic-level (which meta-path itself is most important for the task?).124
+
+Capturing Phased Development: Dynamic Graph Neural Networks (DGNN)
+
+	•	Problem: As discussed in Section II, urban systems are dynamic. Planners must model phased construction 42 and real-time evolving processes like traffic 125 or air quality.127 A static GNN cannot capture these temporal dependencies.
+	•	Solutions:
+	•	Spatio-Temporal GNNs (STGNNs): The most common approach is to combine a GNN with a Recurrent Neural Network (RNN).128 The GNN (e.g., GCN or GAT) aggregates spatial information at each time step $t$. The output (a graph-level or set of node-level embeddings) is then fed into an RNN (e.g., a GRU or LSTM) which models the temporal dependencies across time steps.44
+	•	EvolveGCN: This is a more advanced and powerful architecture for dynamic graphs.21 Instead of just updating node features, EvolveGCN uses an RNN (a GRU or LSTM) to evolve the parameters (weights) of the GNN itself at each time step.21 This is theoretically ideal for phased construction, as the model can "adapt to different sizes of graphs across time".21 If a new building (node) is added, the RNN simply generates a new set of GCN weights adapted to this new topology, rather than failing on an unseen graph structure.129
+
+XII. Concluding Synthesis
+
+This analysis confirms that Graph Neural Networks are a disruptive and transformative technology for urban and campus planning. They provide, for the first time, a computational framework capable of learning and reasoning directly from the relational, non-Euclidean, and graph-structured data that defines the built environment.
+The GNN's role has matured from simple analytical tasks (e.g., building classification) to becoming the central engine for next-generation generative design. The GNN-as-Surrogate, in particular, is a validated and high-impact application, demonstrating benchmarked R² scores above 0.75 and computational speedups of several orders of magnitude (1,000x-10,000x).4 This acceleration fundamentally un-bottlenecks simulation-driven optimization, enabling large-scale evolutionary algorithms to search vast design spaces that were previously inaccessible.
+The future of this field lies in solving the key remaining challenges to create a single, unified model for spatial reasoning. The "grand challenge" is the development of an architecture that is simultaneously:
+	•	SE(2)-Equivariant 9, to ensure all predictions are physically-grounded and robust to rotation and translation.
+	•	Inductive and Scalable 17, like GraphSAGE, to allow knowledge to be generalized to new, unseen, and large-scale (city-wide) layouts.
+	•	Heterogeneous 124, to model the true complexity of urban systems with their multiple types of buildings, infrastructure, and relationships.
+	•	Dynamic and Spatio-Temporal 21, like EvolveGCN, to capture the evolution of a plan from its initial construction phases to its real-time daily operation.
+The development of such a model, combined with the collaborative feedback loop enabled by XAI 15, will complete the paradigm shift: moving computational planning from a static, grid-based, and offline evaluation process to a relational, graph-based, and interactive reasoning process.
+
+XIII. References
+
+(This section would contain the formal bibliographic entries for all 249 source materials 22 cited throughout this report.)
+Alıntılanan çalışmalar
+	•	Graph Neural Network Assisted Genetic Algorithm for Structural Dynamic Response and Parameter Optimization - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2510.22839v1
+	•	Development of a graph neural network surrogate for travel demand modelling - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2408.07726v2
+	•	Rapid CFD Prediction Based on Machine Learning Surrogate Model in Built Environment: A Review - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2311-5521/10/8/193
+	•	Machine Learning Surrogates for Optimizing ... - MATSim, erişim tarihi Kasım 3, 2025, https://matsim.org/conferences/mum2025/abstracts/MUM25_paper_9.pdf
+	•	Graph Neural Network Surrogates to leverage Mechanistic Expert Knowledge towards Reliable and Immediate Pandemic Response - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2411.06500v3
+	•	Graph Convolutional Network Surrogate Model for Mesh-Based Structure-Borne Noise Simulation - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2076-3417/13/16/9079
+	•	Flexible SE(2) graph neural networks with applications to PDE surrogates - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2405.20287v1
+	•	T036 · An introduction to E(3)-invariant graph neural networks - volkamerlab.github.io, erişim tarihi Kasım 3, 2025, https://projects.volkamerlab.org/teachopencadd/talktorials/T036_e3_equivariant_gnn.html
+	•	E(n) Equivariant Graph Neural Networks - Proceedings of Machine ..., erişim tarihi Kasım 3, 2025, http://proceedings.mlr.press/v139/satorras21a/satorras21a.pdf
+	•	Predicting building types and functions at transnational scale - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2409.09692v1
+	•	Edge-based graph neural network for ranking critical road segments in a network | PLOS One - Research journals, erişim tarihi Kasım 3, 2025, https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0296045
+	•	Explainable Graph Neural Networks: An Application to Open Statistics Knowledge Graphs for Estimating House Prices - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2227-7080/12/8/128
+	•	Graph Constrained Multiple Schemes Generation for ... - CumInCAD, erişim tarihi Kasım 3, 2025, https://papers.cumincad.org/data/works/att/cdrf2023_125.pdf
+	•	Constrained Layout Generation with Factor Graphs - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2404.00385v1
+	•	CF-GNNExplainer: Counterfactual Explanations for Graph Neural ..., erişim tarihi Kasım 3, 2025, https://proceedings.mlr.press/v151/lucic22a/lucic22a.pdf
+	•	Tackling Oversmoothing in GNN via Graph Sparsification: A Truss-based Approach - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2407.11928v1
+	•	Inductive Representation Learning on Large Graphs - NIPS, erişim tarihi Kasım 3, 2025, http://papers.neurips.cc/paper/6703-inductive-representation-learning-on-large-graphs.pdf
+	•	Scalable and Efficient Full-Graph GNN Training for Large Graphs - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/371737797_Scalable_and_Efficient_Full-Graph_GNN_Training_for_Large_Graphs
+	•	Heterogeneous Graph Neural Networks with Post-hoc Explanations for Multi-modal and Explainable Land Use Inference - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2406.13724v1
+	•	A Comprehensive Survey of Dynamic Graph Neural Networks: Models, Frameworks, Benchmarks, Experiments and Challenges - Shuibing He, erişim tarihi Kasım 3, 2025, https://shuibing9420.github.io/assets/pdf/2405.00476v1.pdf
+	•	EvolveGCN: Evolving Graph Convolutional Networks for Dynamic ..., erişim tarihi Kasım 3, 2025, https://mitibmwatsonailab.mit.edu/research/blog/evolvegcn-evolving-graph-convolutional-networks-for-dynamic-graphs/
+	•	Graph Theory - Urban Planning - Tutorials Point, erişim tarihi Kasım 3, 2025, https://www.tutorialspoint.com/graph_theory/graph_theory_urban_planning.htm
+	•	Graph Theory for Urban Spatial Design - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/profile/Rini-Holifah/publication/381519800_Graph_Theory_for_Urban_Spatial_Design/data/66727263de777205a338e65d/Rini-Holifah-English.pdf?origin=scientificContributions
+	•	Different types of graphs to model a city - SciSpace, erişim tarihi Kasım 3, 2025, https://scispace.com/pdf/different-types-of-graphs-to-model-a-city-2gbtpj6zkq.pdf
+	•	A Gentle Introduction to Graph Neural Networks - Distill.pub, erişim tarihi Kasım 3, 2025, https://distill.pub/2021/gnn-intro/
+	•	Graph neural network - Wikipedia, erişim tarihi Kasım 3, 2025, https://en.wikipedia.org/wiki/Graph_neural_network
+	•	Training Multi-Stage GNN for Edge level privacy using PyTorch | by Akshay Shah | Medium, erişim tarihi Kasım 3, 2025, https://medium.com/@akshayhitendrashah/training-multi-stage-gnn-for-edge-level-privacy-using-pytorch-a243d5fe166b
+	•	From Heuristics to Data: Quantifying Site Planning Layout Indicators with Deep Learning and Multi-modal Data - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2508.11723v1
+	•	New paper: Predicting building characteristics at urban scale using graph neural networks and street-level context, erişim tarihi Kasım 3, 2025, https://ual.sg/post/2024/05/20/new-paper-predicting-building-characteristics-at-urban-scale-using-graph-neural-networks-and-street-level-context/
+	•	Experience Grammar: Creative Space Planning with Generative ..., erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2075-5309/13/4/869
+	•	Co-embedding of edges and nodes with deep graph convolutional neural networks - PMC, erişim tarihi Kasım 3, 2025, https://pmc.ncbi.nlm.nih.gov/articles/PMC10560674/
+	•	FN-GNN: A Novel Graph Embedding Approach for Enhancing Graph Neural Networks in Network Intrusion Detection Systems - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2076-3417/14/16/6932
+	•	Graph Neural Network Approach to Predict the Effects of Road Capacity Reduction Policies: A Case Study for Paris, France Paper submitted for presentation at the 104th Annual Meeting of the Transportation Research Board, Washington D.C., Jan. 2025 - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2408.06762v1
+	•	Neural Embeddings of Urban Big Data Reveal Emergent Structures in Cities - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/abs/2110.12371
+	•	Visibility graph analysis – Knowledge and References - Taylor & Francis, erişim tarihi Kasım 3, 2025, https://taylorandfrancis.com/knowledge/Engineering_and_technology/Engineering_support_and_special_topics/Visibility_graph_analysis/
+	•	The visibility graph: - space syntax network, erişim tarihi Kasım 3, 2025, https://www.spacesyntax.net/symposia-archive/SSS4/fullpapers/56Tahar-Brownpaper.pdf
+	•	Visibility graph - Wikipedia, erişim tarihi Kasım 3, 2025, https://en.wikipedia.org/wiki/Visibility_graph
+	•	Nearest neighbor graph - Wikipedia, erişim tarihi Kasım 3, 2025, https://en.wikipedia.org/wiki/Nearest_neighbor_graph
+	•	A Note on Graph-Based Nearest Neighbor Search - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/pdf/2012.11083
+	•	Comparison of nearest neighbors definitions in KNN graphs and α-Shape... - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/figure/Comparison-of-nearest-neighbors-definitions-in-KNN-graphs-and-a-Shape-graphs-a-Results_fig1_346206441
+	•	Space Syntax | Visibility Graph Analysis | Edu-Archs - YouTube, erişim tarihi Kasım 3, 2025, https://www.youtube.com/watch?v=arxCvsgNZXs
+	•	Spatiotemporal Planning of Construction Projects: A Literature Review and Assessment of the State of the Art - Frontiers, erişim tarihi Kasım 3, 2025, https://www.frontiersin.org/journals/built-environment/articles/10.3389/fbuil.2020.00128/full
+	•	[2505.06292] Spatio-Temporal Graph Neural Network for Urban Spaces: Interpolating Citywide Traffic Volume - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/abs/2505.06292
+	•	Spatio-Temporal Multi-Graph Convolution Traffic Flow Prediction Model Based on Multi-Source Information Fusion and Attention Enhancement - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2076-3417/15/20/11295
+	•	Building powerful and equivariant graph neural networks with structural message-passing, erişim tarihi Kasım 3, 2025, https://proceedings.neurips.cc/paper/2020/file/a32d7eeaae19821fd9ce317f3ce952a7-Paper.pdf
+	•	Relational inductive biases, deep learning, and graph networks - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/pdf/1806.01261
+	•	Optimizing Supply Chain Networks with the Power of Graph Neural Networks - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2501.06221v1
+	•	Understanding Message Passing in GNNs - Emma Benjaminson, erişim tarihi Kasım 3, 2025, https://sassafras13.github.io/GNN/
+	•	Creating Message Passing Networks — pytorch_geometric ..., erişim tarihi Kasım 3, 2025, https://pytorch-geometric.readthedocs.io/en/2.6.0/notes/create_gnn.html
+	•	The Math Behind Graph Neural Networks - Medium, erişim tarihi Kasım 3, 2025, https://medium.com/@cristianleo120/the-math-behind-graph-neural-networks-3427c16570d0
+	•	Physics-Informed and Explainable Graph Neural Networks for ..., erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2076-3417/15/16/8854
+	•	Exploiting Edge Features in Graph Neural Networks - DLMA: Deep Learning for Medical Applications - BayernCollab, erişim tarihi Kasım 3, 2025, https://collab.dvb.bayern/spaces/TUMdlma/pages/73379930/Exploiting+Edge+Features+in+Graph+Neural+Networks
+	•	Towards Causal Classification: A Comprehensive Study on Graph Neural Networks - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2401.15444v1
+	•	Incorporating Context into BIM-Derived Data—Leveraging Graph Neural Networks for Building Element Classification - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2075-5309/14/2/527
+	•	Graph Attention Networks: A Comprehensive Review of Methods and Applications - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/1999-5903/16/9/318
+	•	GraphSAGE: Inductive Representation Learning on Large Graphs - Stanford University, erişim tarihi Kasım 3, 2025, https://snap.stanford.edu/graphsage/
+	•	Explainability Methods for Graph Convolutional Neural Networks - CVF Open Access, erişim tarihi Kasım 3, 2025, https://openaccess.thecvf.com/content_CVPR_2019/papers/Pope_Explainability_Methods_for_Graph_Convolutional_Neural_Networks_CVPR_2019_paper.pdf
+	•	Equivariant Graph NEURAL NETWORKS FOR HIGH ENERGY PHYSICS - CERN Indico, erişim tarihi Kasım 3, 2025, https://indico.cern.ch/event/1128328/contributions/4900758/attachments/2456141/4209831/EquiGNN%20Review%20and%20HEP%20Applications.pdf
+	•	[2403.11304] Pioneering SE(2)-Equivariant Trajectory Planning for Automated Driving - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/abs/2403.11304
+	•	[2102.09844] E(n) Equivariant Graph Neural Networks - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/abs/2102.09844
+	•	Towards Scale-Invariant Graph-related Problem Solving by Iterative Homogeneous Graph Neural Networks, erişim tarihi Kasım 3, 2025, https://proceedings.neurips.cc/paper/2020/file/b64a70760bb75e3ecfd1ad86d8f10c88-Paper.pdf
+	•	Predicting building characteristics at urban scale using graph neural networks and street-level context - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/profile/Binyu_Lei/publication/380698947_Predicting_building_characteristics_at_urban_scale_using_graph_neural_networks_and_street-level_context/links/664b0058479366623afdd351/Predicting-building-characteristics-at-urban-scale-using-graph-neural-networks-and-street-level-context.pdf
+	•	Beyond Grid Data: Exploring Graph Neural Networks for Earth Observation - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2411.03223v1
+	•	Graph Neural Networks with PyG on Node Classification, Link Prediction, and Anomaly Detection | by Tomonori Masui | TDS Archive | Medium, erişim tarihi Kasım 3, 2025, https://medium.com/data-science/graph-neural-networks-with-pyg-on-node-classification-link-prediction-and-anomaly-detection-14aa38fe1275
+	•	Graph Neural Networks for Node Classification and Attribute Allocation in Architectural BIM - -ORCA - Cardiff University, erişim tarihi Kasım 3, 2025, https://orca.cardiff.ac.uk/id/eprint/170462/1/ecaade_2024_id_66.pdf
+	•	Tutorial 6: Basics of Graph Neural Networks — PyTorch Lightning 2.5.5 documentation, erişim tarihi Kasım 3, 2025, https://lightning.ai/docs/pytorch/stable/notebooks/course_UvA-DL/06-graph-neural-networks.html
+	•	Guiding Genetic Programming with Graph Neural Networks - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2411.05820v1
+	•	Fitness Landscape Analysis of Graph Neural Network Architecture Search Spaces - CMAP, erişim tarihi Kasım 3, 2025, http://www.cmap.polytechnique.fr/~nikolaus.hansen/proceedings/2021/GECCO/proceedings/proceedings_files/p876-nunes.pdf
+	•	Computer-Aided Layout Generation for Building Design: A Review - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2504.09694v1
+	•	Architectural layout generation using a graph-constrained conditional Generative Adversarial Network (GAN) | Request PDF - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/373216471_Architectural_layout_generation_using_a_graph-constrained_conditional_Generative_Adversarial_Network_GAN
+	•	MaskPLAN: Masked Generative Layout ... - CVF Open Access, erişim tarihi Kasım 3, 2025, https://openaccess.thecvf.com/content/CVPR2024/papers/Zhang_MaskPLAN_Masked_Generative_Layout_Planning_from_Partial_Input_CVPR_2024_paper.pdf
+	•	SCHOOL OF COMPUTATION, INFORMATION AND TECHNOLOGY - INFORMATICS GNNs for Knowledge Transfer in Robotic Assembly Sequence Plannin, erişim tarihi Kasım 3, 2025, https://elib.dlr.de/194212/1/GNN_for_Robotic_Sequence_Assembly_Thesis_submitted.pdf
+	•	Graph Neural Networks for Maximum Constraint Satisfaction - Frontiers, erişim tarihi Kasım 3, 2025, https://www.frontiersin.org/journals/artificial-intelligence/articles/10.3389/frai.2020.580607/full
+	•	Unrolled Graph Neural Networks for Constrained Optimization - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2509.17156v1
+	•	Combinatorial Optimization and Reasoning with Graph Neural Networks - Journal of Machine Learning Research, erişim tarihi Kasım 3, 2025, https://jmlr.org/papers/volume24/21-0449/21-0449.pdf
+	•	Towards Robust Representations of Spatial Networks Using Graph Neural Networks - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2076-3417/11/15/6918
+	•	Comparing two evolutionary algorithm based methods for layout generation: Dense packing versus subdivision - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/264122690_Comparing_two_evolutionary_algorithm_based_methods_for_layout_generation_Dense_packing_versus_subdivision
+	•	Data-efficient rapid prediction of urban airflow and temperature fields for complex building geometries - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2503.19708v1
+	•	Delft University of Technology Machine Learning-Based Surrogate Modeling for Urban Water Networks Review and Future Research Directions, erişim tarihi Kasım 3, 2025, https://research.tudelft.nl/files/125478848/Water_Resources_Research_2022_Garz_n_Machine_Learning_Based_Surrogate_Modeling_for_Urban_Water_Networks_Review_and.pdf
+	•	Neural Network Surrogate Modeling for Stochastic Finite Element Method Using Three-Dimensional Graph Representations: A Comparative Study - ASME Digital Collection, erişim tarihi Kasım 3, 2025, https://asmedigitalcollection.asme.org/mechanicaldesign/article/148/1/011704/1219901/Neural-Network-Surrogate-Modeling-for-Stochastic
+	•	[2404.10324] Graph neural network-based surrogate modelling for real-time hydraulic prediction of urban drainage networks - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/abs/2404.10324
+	•	UrbanGraph: Physics-Informed Spatio-Temporal Dynamic Heterogeneous Graphs for Urban Microclimate Prediction - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2510.00457v1
+	•	Graph neural network-based surrogate modelling for real-time hydraulic prediction of urban drainage networks - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/pdf/2404.10324?
+	•	Genetic-guided GFlowNets: Advancing in Practical Molecular Optimization Benchmark, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2402.05961v1
+	•	[1801.10087] The Benefits of Population Diversity in Evolutionary Algorithms: A Survey of Rigorous Runtime Analyses - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/abs/1801.10087
+	•	Population Diversity Control of Genetic Algorithm Using a Novel Injection Method for Bankruptcy Prediction Problem - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2227-7390/9/8/823
+	•	[2201.09871] On Evaluation Metrics for Graph Generative Models - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/abs/2201.09871
+	•	Learn from Global Correlations: Enhancing Evolutionary Algorithm via Spectral GNN - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/abs/2412.17629
+	•	Full article: Urban street network morphology classification through street-block based graph neural networks and multi-model fusion - Taylor & Francis Online, erişim tarihi Kasım 3, 2025, https://www.tandfonline.com/doi/full/10.1080/17538947.2025.2497490
+	•	[2502.16210] Interpreting core forms of urban morphology linked to urban functions with explainable graph neural network - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/abs/2502.16210
+	•	Full article: A graph neural network framework for spatial geodemographic classification - Taylor & Francis Online, erişim tarihi Kasım 3, 2025, https://www.tandfonline.com/doi/full/10.1080/13658816.2023.2254382
+	•	Research on Urban Road Traffic Flow Prediction Based on Sa-Dynamic Graph Convolutional Neural Network - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2227-7390/13/3/416
+	•	Graph Neural Networks for Urban Traffic Flow Forecasting: A Comprehensive Review and Future Perspectives - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/396840947_Graph_Neural_Networks_for_Urban_Traffic_Flow_Forecasting_A_Comprehensive_Review_and_Future_Perspectives
+	•	A Review of Dynamic Traffic Flow Prediction Methods for Global Energy- Efficient Route Planning - Preprints.org, erişim tarihi Kasım 3, 2025, https://www.preprints.org/frontend/manuscript/f896e334a7af9cace4b92b540cfe199d/download_pub
+	•	Comprehensive Guide to GNN, GAT, and GCN: A Beginner's Introduction to Graph Neural Networks After Reading 11 GNN Papers | by Joyce Birkins | Medium, erişim tarihi Kasım 3, 2025, https://medium.com/@joycebirkins/comprehensive-guide-to-gnn-gat-and-gcn-a-beginners-introduction-to-graph-neural-networks-after-51d09ac043b5
+	•	Deep-learning-based urban intelligent traffic flow prediction and optimization research, erişim tarihi Kasım 3, 2025, https://www.spiedigitallibrary.org/conference-proceedings-of-spie/13575/3062283/Deep-learning-based-urban-intelligent-traffic-flow-prediction-and-optimization/10.1117/12.3062283.full
+	•	Advancing Urban Planning with Deep Learning: Intelligent Traffic Flow Prediction and Optimization for Smart Cities - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2673-7590/5/4/133
+	•	Graph neural network surrogate for strategic transport planning - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2408.07726v1
+	•	[2305.04499] Building Footprint Extraction with Graph Convolutional Network - ar5iv, erişim tarihi Kasım 3, 2025, https://ar5iv.labs.arxiv.org/html/2305.04499
+	•	Spatio-Temporal Graph Neural Network for Urban Spaces: Interpolating Citywide Traffic Volume - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2505.06292v1
+	•	STM-Graph: A Python Framework for Spatio-Temporal Mapping and Graph Neural Network Predictions - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2509.10528v1
+	•	Graph Neural Networks in Urban Intelligence, erişim tarihi Kasım 3, 2025, https://graph-neural-networks.github.io/static/file/chapter27.pdf
+	•	Interpretability in Graph Neural Networks, erişim tarihi Kasım 3, 2025, https://graph-neural-networks.github.io/static/file/chapter7.pdf
+	•	Multi-View Spatial-Temporal Graph Convolutional Networks With Domain Generalization for Sleep Stage Classification - NIH, erişim tarihi Kasım 3, 2025, https://pmc.ncbi.nlm.nih.gov/articles/PMC8556658/
+	•	Looking behind the curtain: saliency maps for graph machine learning - Medium, erişim tarihi Kasım 3, 2025, https://medium.com/stellargraph/https-medium-com-stellargraph-saliency-maps-for-graph-machine-learning-5cca536974da
+	•	Statistical Test for Saliency Maps of Graph Neural Networks via Selective Inference - arXiv, erişim tarihi Kasım 3, 2025, https://www.arxiv.org/abs/2505.16893
+	•	Natural Language Counterfactual Explanations for Graphs Using Large Language Models, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2410.09295v1
+	•	C2Explainer: Customizable Mask-based Counterfactual Explanation for Graph Neural Networks - ACM FAccT, erişim tarihi Kasım 3, 2025, https://facctconference.org/static/docs/facct2025-206archivalpdfs/facct2025-final80-acmpaginated.pdf
+	•	PyTorch Geometric vs Deep Graph Library | Exxact Blog, erişim tarihi Kasım 3, 2025, https://www.exxactcorp.com/blog/Deep-Learning/pytorch-geometric-vs-deep-graph-library
+	•	GNNs: DGL vs PyTorch Geometric : r/learnmachinelearning - Reddit, erişim tarihi Kasım 3, 2025, https://www.reddit.com/r/learnmachinelearning/comments/1fumnhq/gnns_dgl_vs_pytorch_geometric/
+	•	Let's Talk About Graph Neural Network Python Libraries! | by Rohith Teja | TDS Archive, erişim tarihi Kasım 3, 2025, https://medium.com/data-science/lets-talk-about-graph-neural-network-python-libraries-a0b23ec983b0
+	•	PyTorch Geometric - Read the Docs, erişim tarihi Kasım 3, 2025, https://pytorch-geometric.readthedocs.io/
+	•	Build a Graph Neural Network with PyTorch Geometric | by Rjnclarke | Medium, erişim tarihi Kasım 3, 2025, https://medium.com/@rjnclarke/build-a-graph-neural-network-with-pytorch-geometric-fd7918345fa8
+	•	Switching from DGL to PyTorch Geometric — NVIDIA PhysicsNeMo Framework, erişim tarihi Kasım 3, 2025, https://docs.nvidia.com/physicsnemo/latest/resources/dgl_to_pyg_migration.html
+	•	What is the relationship between DGL and PyG? · Issue #1365 - GitHub, erişim tarihi Kasım 3, 2025, https://github.com/rusty1s/pytorch_geometric/issues/1365
+	•	Graph Neural Networks with Adjusted Loss Functions for Cardinality Estimation Bachelor Thesis Janusz Feigel, erişim tarihi Kasım 3, 2025, https://wwwiti.cs.uni-magdeburg.de/iti_db/publikationen/ps/auto/MastersThesis:Feigel:2021.pdf
+	•	Neural networks for geospatial data - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2304.09157v2
+	•	Taming Gradient Oversmoothing and Expansion in Graph Neural Networks - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2410.04824v1
+	•	Over smoothing issue in graph neural network - Towards Data Science, erişim tarihi Kasım 3, 2025, https://towardsdatascience.com/over-smoothing-issue-in-graph-neural-network-bddc8fbc2472/
+	•	Resisting Over-Smoothing in Graph Neural Networks via Dual-Dimensional Decoupling, erişim tarihi Kasım 3, 2025, https://openreview.net/forum?id=QqG3wI3c8L
+	•	ScaleGNN: Towards Scalable Graph Neural Networks via Adaptive High-order Neighboring Feature Fusion - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2504.15920v1
+	•	MHGNet: Multi-Heterogeneous Graph Neural Network for Traffic Prediction *corresponding author: 111124120010@zjut.edu.cn - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2501.03635v1
+	•	Road Network Intelligent Selection Method Based on ... - MDPI, erişim tarihi Kasım 3, 2025, https://www.mdpi.com/2220-9964/13/9/300
+	•	Interpretable Dynamic Graph Neural Networks for Detecting and Tracking Small Occluded Objects in Urban Traffic - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/386143622_Interpretable_Dynamic_Graph_Neural_Networks_for_Detecting_and_Tracking_Small_Occluded_Objects_in_Urban_Traffic
+	•	DGNN-YOLO: Interpretable Dynamic Graph Neural Networks with YOLO11 for Small Occluded Object Detection and Tracking - arXiv, erişim tarihi Kasım 3, 2025, https://arxiv.org/html/2411.17251v6
+	•	Dynamic graph neural network with adaptive edge attributes for air quality prediction: A case study in China - PMC - PubMed Central, erişim tarihi Kasım 3, 2025, https://pmc.ncbi.nlm.nih.gov/articles/PMC10345359/
+	•	EvolveGCN: Evolving Graph Convolutional Networks for Dynamic Graphs - ResearchGate, erişim tarihi Kasım 3, 2025, https://www.researchgate.net/publication/342539885_EvolveGCN_Evolving_Graph_Convolutional_Networks_for_Dynamic_Graphs
+	•	EvolveGCN: Evolving Graph Convolutional Networks for Dynamic Graphs - AAAI Publications, erişim tarihi Kasım 3, 2025, https://ojs.aaai.org/index.php/AAAI/article/view/5984/5840
+	•	[1902.10191] EvolveGCN: Evolving Graph Convolutional Networks for Dynamic Graphs, erişim tarihi Kasım 3, 2025, https://arxiv.org/abs/1902.10191
+	•	[2311.05764] Generative Explanations for Graph Neural Network: Methods and Evaluations, erişim tarihi Kasım 3, 2025, https://arxiv.org/abs/2311.05764

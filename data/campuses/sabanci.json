@@ -1,0 +1,48 @@
+{
+  "name": "Sabancı University",
+  "location": "Istanbul, Turkey",
+  "boundary": {
+    "type": "Polygon",
+    "coordinates": [[
+      [0, 0],
+      [1100, 0],
+      [1100, 1500],
+      [0, 1500],
+      [0, 0]
+    ]]
+  },
+  "existing_buildings": [
+    {
+      "id": "existing_library",
+      "type": "library",
+      "position": [550, 750],
+      "area": 4800,
+      "floors": 4
+    },
+    {
+      "id": "existing_faculty",
+      "type": "educational",
+      "position": [250, 350],
+      "area": 4200,
+      "floors": 3
+    },
+    {
+      "id": "existing_student_center",
+      "type": "social",
+      "position": [850, 1200],
+      "area": 3800,
+      "floors": 3
+    }
+  ],
+  "constraints": {
+    "setback_from_boundary": 8,
+    "coverage_ratio_max": 0.3,
+    "far_max": 2.0,
+    "min_green_space_ratio": 0.4
+  },
+  "metadata": {
+    "total_area_m2": 1650000,
+    "student_count": 6000,
+    "established": 1994
+  }
+}

@@ -1,7 +1,7 @@
 # PlanifyAI Architecture Documentation
 
 **Version:** 1.0.0
-**Last Updated:** 2025-11-03
+**Last Updated:** 2025-11-09
 **Status:** Active Development
 
 ---
@@ -133,17 +133,23 @@ PlanifyAI is a spatial planning optimization system that uses hybrid metaheurist
 
 ---
 
-### 3. `src/data/` - Data Processing
+### 3. `src/data/` - Data Processing (Day 6)
 
-**Purpose**: Data loading, preprocessing, and export.
+**Purpose**: Geospatial data structures and parsers.
 
-**Status**: To be implemented (Week 3)
+**Status**: ✅ Implemented (Day 6)
 
-**Planned Components**:
-- Campus dataset loaders (OSM, GeoJSON)
-- Building type mappings
+**Components**:
+- `campus_data.py`: CampusData dataclass with boundary, constraints, metadata
+- `parser.py`: CampusDataParser for GeoJSON/Shapefile/dict parsing
+- `export.py`: ResultExporter for GeoJSON/CSV/JSON/Markdown export
+
+**Key Features**:
+- Boundary polygon management
+- Existing buildings tracking
 - Constraint definitions
-- Export utilities (JSON, GeoJSON, Shapefile)
+- Data validation
+- Multi-format export
 
 ---
 
@@ -162,7 +168,61 @@ PlanifyAI is a spatial planning optimization system that uses hybrid metaheurist
 
 ---
 
-### 5. `src/utils/` - Utilities
+### 5. `src/data/` - Data Processing (Day 6)
+
+**Purpose**: Geospatial data structures and parsers.
+
+**Status**: ✅ Implemented (Day 6)
+
+**Components**:
+- `campus_data.py`: CampusData dataclass with boundary, constraints, metadata
+- `parser.py`: CampusDataParser for GeoJSON/Shapefile/dict parsing
+- `export.py`: ResultExporter for GeoJSON/CSV/JSON/Markdown export
+
+**Key Features**:
+- Boundary polygon management
+- Existing buildings tracking
+- Constraint definitions
+- Data validation
+- Multi-format export
+
+### 6. `src/constraints/` - Spatial Constraints (Day 6)
+
+**Purpose**: Spatial constraint system for campus planning.
+
+**Status**: ✅ Implemented (Day 6)
+
+**Components**:
+- `spatial_constraints.py`: SpatialConstraint base class and implementations
+
+**Constraint Types**:
+- SetbackConstraint: Minimum distance from boundary
+- CoverageRatioConstraint: Maximum building coverage ratio
+- FloorAreaRatioConstraint: Maximum floor area ratio (FAR)
+- GreenSpaceConstraint: Minimum green space ratio
+
+**Key Features**:
+- Constraint checking
+- Penalty calculation
+- Violation tracking
+- ConstraintManager for multi-constraint handling
+
+### 7. `src/visualization/` - Visualization (Day 6)
+
+**Purpose**: Visualization utilities for solutions and results.
+
+**Status**: ✅ Implemented (Day 6)
+
+**Components**:
+- `plot_utils.py`: CampusPlotter for solution/convergence/objectives visualization
+
+**Key Features**:
+- Solution layout visualization
+- Convergence plotting
+- Objectives breakdown visualization
+- Constraint violation visualization
+
+### 8. `src/utils/` - Utilities
 
 **Purpose**: Shared utilities and helpers.
 

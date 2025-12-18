@@ -1,0 +1,59 @@
+[project]
+name = "planifyai"
+version = "0.0.1"
+description = "AI-powered generative spatial planning for Turkish university campuses"
+authors = [{name = "Emre"}]
+license = {text = "MIT"}
+requires-python = ">=3.11"
+readme = "README.md"
+
+[project.urls]
+Homepage = "https://github.com/emre/planifyai"
+Documentation = "https://planifyai.readthedocs.io"
+Repository = "https://github.com/emre/planifyai"
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = """
+    --cov=backend
+    --cov-report=html
+    --cov-report=term-missing
+    --benchmark-skip
+"""
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+plugins = ["numpy.typing.mypy_plugin"]
+
+[tool.coverage.run]
+source = ["backend"]
+omit = ["*/tests/*", "*/venv/*"]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
