@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.2.2] - 2025-12-18
+
+### Changed
+- **Frontend Architecture**: Refactored `OptimizationResults.tsx` logic into `MapContext` and custom hooks (`useMapInitialization`, `useBuildingInteraction`, `useBoundaryEditor`, `useSimulationRunner`).
+- **Decoupling**: Isolated map layers (`ExistingContextLayers`, `GatewayLayer`, `WindOverlay`, `SlopeOverlay`) to consume data via context.
+- **Type Safety**: Introduced standard hooks for map operations, reducing prop drilling and centralized state management.
+- **Cleanup**: Updated `.gitignore` to exclude redundant data and duplicated files.
+
 ## [10.2.1] - 2025-12-10
 
 ### Added
