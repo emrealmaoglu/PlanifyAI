@@ -109,22 +109,25 @@ class SetbackCalculator:
         Returns:
             Dictionary with min/max/avg distances and violation status
         """
-        # Get minimum distance from building to boundary
-        min_distance = building.distance(boundary)
-
         # Sample multiple points on building perimeter for detailed analysis
         exterior_coords = list(building.exterior.coords)
         distances = []
 
+        # Calculate distance from each building corner to boundary edge
+        boundary_exterior = boundary.exterior
         for coord in exterior_coords:
             point = Point(coord)
-            dist = point.distance(boundary)
+            dist = point.distance(boundary_exterior)
             distances.append(dist)
+
+        min_distance = min(distances) if distances else 0.0
+        max_distance = max(distances) if distances else 0.0
+        avg_distance = sum(distances) / len(distances) if distances else 0.0
 
         return {
             "min_distance": min_distance,
-            "max_distance": max(distances),
-            "avg_distance": sum(distances) / len(distances),
+            "max_distance": max_distance,
+            "avg_distance": avg_distance,
             "compliant": min_distance >= 0,  # Will be checked against required setback
         }
 
