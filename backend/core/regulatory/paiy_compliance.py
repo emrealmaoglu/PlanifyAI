@@ -142,7 +142,7 @@ class PAIYCompliance:
         self.parcel_area = parcel_area
         self.constants = constants or PAIYConstants()
 
-    def calculate_required_setback(self, floors: int, height: float) -> float:
+    def calculate_required_setback(self, floors: int, height: Optional[float] = None) -> float:
         """
         Calculate required setback distance based on building height.
 
@@ -151,11 +151,15 @@ class PAIYCompliance:
 
         Args:
             floors: Number of floors
-            height: Building height (meters)
+            height: Building height (meters), estimated if None
 
         Returns:
             Required setback distance (meters)
         """
+        # Estimate height if not provided (3.5m per floor)
+        if height is None:
+            height = floors * 3.5
+
         if height > 60.5:
             return self.constants.MAX_HEIGHT_SETBACK
 
