@@ -7,3 +7,4 @@
 
 export { ProjectInfoForm } from './ProjectInfoForm';
 export { GeoContextForm } from './GeoContextForm';
+export { SiteParametersForm } from './SiteParametersForm';
