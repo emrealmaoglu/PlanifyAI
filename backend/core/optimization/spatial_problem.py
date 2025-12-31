@@ -42,6 +42,11 @@ from backend.core.optimization.physics_objectives import (
 # Phase 8: Terrain imports
 from backend.core.terrain.elevation import DEMSampler, SlopeCalculator
 
+# Sprint 3: Gateway imports
+from backend.core.domain.models.campus import Gateway
+from backend.core.optimization.constraints.gateway_clearance import GatewayClearanceConstraint
+from backend.core.optimization.objectives.gateway_connectivity import GatewayConnectivityObjective
+
 
 # =============================================================================
 # CONSTRAINT CALCULATORS (Phase 8: Regulatory Enhanced)
@@ -70,19 +75,31 @@ class ConstraintCalculator:
         boundary: Polygon,
         site_params: SiteParameters,
         road_geometries: List[LineString] = None,
-        dem_sampler: DEMSampler = None
+        dem_sampler: DEMSampler = None,
+        gateways: Optional[List[Gateway]] = None,
+        gateway_clearance_radius: float = 50.0,
+        gateway_clearance_directional: bool = True
     ):
         self.boundary = boundary
         self.prepared_boundary = prepared.prep(boundary)
         self.site_params = site_params
         self.road_geometries = road_geometries or []
-        
+
         # Phase 8: DEM for slope analysis
         self.dem_sampler = dem_sampler or DEMSampler(offline_mode=True)
         self.slope_calc = SlopeCalculator(self.dem_sampler)
-        
+
         # Create buffered boundary for setback checks
         self.inner_boundary = boundary.buffer(-site_params.setback_front)
+
+        # Sprint 3: Gateway clearance constraint
+        self.gateway_constraint = None
+        if gateways:
+            self.gateway_constraint = GatewayClearanceConstraint(
+                gateways=gateways,
+                clearance_radius=gateway_clearance_radius,
+                use_directional_clearance=gateway_clearance_directional
+            )
         
     def __getstate__(self):
         """Custom pickling state - remove prepared geometries."""
@@ -309,24 +326,38 @@ class ConstraintCalculator:
     def slope_violation(self, polygons: List[Polygon]) -> float:
         """
         Phase 8: Terrain slope constraint.
-        
+
         Rule: Construction forbidden on slopes > 15%
-        
+
         Hard Constraint: Turkish Urban Planning Standards
         """
         total_violation = 0.0
-        
+
         for poly in polygons:
             coords = list(poly.exterior.coords[:4])  # Sample corners
-            
+
             # Calculate slope using DEM
             slope = self.slope_calc.calculate_slope_at_polygon(coords)
-            
+
             if slope > self.MAX_SLOPE:
                 excess = slope - self.MAX_SLOPE
                 total_violation += excess * poly.area
-        
+
         return total_violation
+
+    def gateway_clearance_violation(self, polygons: List[Polygon]) -> float:
+        """
+        Sprint 3: Gateway clearance constraint.
+
+        Rule: Buildings must not violate gateway clearance zones.
+
+        Hard Constraint: Buildings must respect clearance zones around campus
+        gateways to ensure traffic flow and access.
+        """
+        if not self.gateway_constraint:
+            return 0.0
+
+        return self.gateway_constraint.get_violation_distance(polygons)
 
 
 # =============================================================================
@@ -348,23 +379,36 @@ class ObjectiveCalculator:
         optimization_goals: Dict[OptimizationGoal, float],
         existing_buildings: List[Polygon] = None,
         latitude: float = 41.38,
-        wind_data: WindVector = None
+        wind_data: WindVector = None,
+        gateways: Optional[List[Gateway]] = None,
+        gateway_connectivity_weight: float = 1.0
     ):
         self.boundary = boundary
         self.goals = optimization_goals
         self.existing_buildings = existing_buildings or []
         self.latitude = latitude
-        
+        self.gateways = gateways or []
+        self.gateway_connectivity_weight = gateway_connectivity_weight
+
         # Precompute boundary centroid
         self.boundary_centroid = np.array([boundary.centroid.x, boundary.centroid.y])
-        
+
         # Phase 7: Physics calculators
         self.wind_calc = WindBlockageCalculator(wind=wind_data or DEFAULT_WIND)
         self.solar_calc = SolarGainCalculator(latitude=latitude)
-        
+
         # Determine if physics is enabled based on goals
         self.enable_wind = self.goals.get(OptimizationGoal.WIND_COMFORT, 0) > 0
         self.enable_solar = self.goals.get(OptimizationGoal.SOLAR_GAIN, 0) > 0
+
+        # Sprint 3: Gateway connectivity objective
+        self.gateway_objective = None
+        if self.gateways:
+            self.gateway_objective = GatewayConnectivityObjective(
+                gateways=self.gateways,
+                boundary=self.boundary,
+                weight=self.gateway_connectivity_weight
+            )
     
     def compactness(self, genes: List[BuildingGene]) -> float:
         """Calculate compactness penalty (spread-out layouts are bad)."""
@@ -445,9 +489,26 @@ class ObjectiveCalculator:
         weight = self.goals.get(OptimizationGoal.SOLAR_GAIN, 0.0)
         if weight == 0 or not self.enable_solar:
             return 0.0
-        
+
         raw_score = self.solar_calc.calculate_solar_penalty(genes, polygons)
         return weight * raw_score
+
+    def gateway_connectivity(self, polygons: List[Polygon]) -> float:
+        """
+        Calculate gateway connectivity penalty (Sprint 3).
+
+        Lower is better (minimize distance to gateways).
+        Gateway objective returns 0-1 (higher = better connectivity).
+        Convert to minimization: 1 - score.
+        """
+        if not self.gateway_objective:
+            return 0.0
+
+        # Gateway objective returns score in [0, 1] where higher is better
+        connectivity_score = self.gateway_objective.calculate(polygons)
+
+        # Convert to minimization (lower is better)
+        return 1.0 - connectivity_score
 
 
 # =============================================================================
@@ -485,11 +546,15 @@ class SpatialOptimizationProblem(ElementwiseProblem):
         enable_regulatory: bool = True,
         wind_data: WindVector = None,
         dem_sampler: DEMSampler = None,
+        gateways: Optional[List[Gateway]] = None,
+        gateway_clearance_radius: float = 50.0,
+        gateway_clearance_directional: bool = True,
+        gateway_connectivity_weight: float = 1.0,
         **kwargs
     ):
         """
         Initialize the spatial optimization problem.
-        
+
         Args:
             context: CampusContext from OSM service
             building_counts: Dict of {type_name: count}
@@ -500,6 +565,10 @@ class SpatialOptimizationProblem(ElementwiseProblem):
             enable_regulatory: Enable regulatory constraints (Phase 8)
             wind_data: Optional custom wind vector
             dem_sampler: Optional DEM sampler for slope analysis
+            gateways: Optional list of campus gateways (Sprint 3)
+            gateway_clearance_radius: Clearance radius around gateways (Sprint 3)
+            gateway_clearance_directional: Use directional clearance zones (Sprint 3)
+            gateway_connectivity_weight: Weight for gateway connectivity objective (Sprint 3)
         """
         self.context = context
         self.building_counts = building_counts
@@ -507,6 +576,10 @@ class SpatialOptimizationProblem(ElementwiseProblem):
         self.enable_wind = enable_wind
         self.enable_solar = enable_solar
         self.enable_regulatory = enable_regulatory
+        self.gateways = gateways or []
+        self.gateway_clearance_radius = gateway_clearance_radius
+        self.gateway_clearance_directional = gateway_clearance_directional
+        self.gateway_connectivity_weight = gateway_connectivity_weight
         
         # Default goals with physics
         default_goals = {
@@ -535,11 +608,15 @@ class SpatialOptimizationProblem(ElementwiseProblem):
                 road_geoms.append(road.geometry)
         
         # Phase 8: Initialize constraint calculator with DEM
+        # Sprint 3: Add gateway parameters
         self.constraint_calc = ConstraintCalculator(
             context.boundary,
             self.site_params,
             road_geoms,
-            dem_sampler=dem_sampler
+            dem_sampler=dem_sampler,
+            gateways=self.gateways,
+            gateway_clearance_radius=self.gateway_clearance_radius,
+            gateway_clearance_directional=self.gateway_clearance_directional
         )
         
         # Get existing building polygons
@@ -549,18 +626,25 @@ class SpatialOptimizationProblem(ElementwiseProblem):
         lat, _ = context.center_latlon
         
         # Initialize objective calculator
+        # Sprint 3: Add gateway parameters
         self.objective_calc = ObjectiveCalculator(
             context.boundary,
             self.goals,
             existing_polys,
             latitude=lat,
-            wind_data=wind_data
+            wind_data=wind_data,
+            gateways=self.gateways,
+            gateway_connectivity_weight=self.gateway_connectivity_weight
         )
         
-        # Problem dimensions (Phase 8: 5 constraints)
+        # Problem dimensions (Phase 8: 5 constraints, Sprint 3: +1 gateway constraint, +1 gateway objective)
         n_var = self.num_buildings * GENES_PER_BUILDING
         n_obj = 4   # Compactness, Adjacency, Wind, Solar
+        if self.gateways:
+            n_obj += 1  # Sprint 3: +Gateway connectivity
         n_ieq_constr = 5 if enable_regulatory else 4  # +Slope for Phase 8
+        if self.gateways:
+            n_ieq_constr += 1  # Sprint 3: +Gateway clearance
         
         super().__init__(
             n_var=n_var,
@@ -609,20 +693,34 @@ class SpatialOptimizationProblem(ElementwiseProblem):
             g_setback = self.constraint_calc.setback_violation(polygons)
             g_separation = self.constraint_calc.separation_violation(polygons)
             g_slope = 0.0
-        
+
+        # Sprint 3: Gateway clearance constraint
+        g_gateway = self.constraint_calc.gateway_clearance_violation(polygons)
+
         # Calculate objectives
         f_compactness = self.objective_calc.compactness(genes)
         f_adjacency = self.objective_calc.adjacency(genes)
         f_wind = self.objective_calc.wind_comfort(genes, polygons)
         f_solar = self.objective_calc.solar_gain(genes, polygons)
-        
-        # Set outputs
-        out["F"] = np.array([f_compactness, f_adjacency, f_wind, f_solar])
-        
+        f_gateway = self.objective_calc.gateway_connectivity(polygons)
+
+        # Build objective array (Sprint 3: conditionally add gateway)
+        objectives = [f_compactness, f_adjacency, f_wind, f_solar]
+        if self.gateways:
+            objectives.append(f_gateway)
+
+        out["F"] = np.array(objectives)
+
+        # Build constraint array (Sprint 3: conditionally add gateway)
         if self.enable_regulatory:
-            out["G"] = np.array([g_boundary, g_overlap, g_setback, g_separation, g_slope])
+            constraints = [g_boundary, g_overlap, g_setback, g_separation, g_slope]
         else:
-            out["G"] = np.array([g_boundary, g_overlap, g_setback, g_separation])
+            constraints = [g_boundary, g_overlap, g_setback, g_separation]
+
+        if self.gateways:
+            constraints.append(g_gateway)
+
+        out["G"] = np.array(constraints)
     
     def get_type_sequence(self) -> List[int]:
         """Return the expected type sequence for validation."""
@@ -638,13 +736,22 @@ class SpatialOptimizationProblem(ElementwiseProblem):
     
     def get_objective_names(self) -> List[str]:
         """Return names of objectives for reporting."""
-        return ["compactness", "adjacency", "wind_comfort", "solar_gain"]
+        names = ["compactness", "adjacency", "wind_comfort", "solar_gain"]
+        if self.gateways:
+            names.append("gateway_connectivity")
+        return names
     
     def get_constraint_names(self) -> List[str]:
         """Return names of constraints for reporting."""
         if self.enable_regulatory:
-            return ["boundary", "overlap", "setback", "fire_separation", "slope"]
-        return ["boundary", "overlap", "setback", "separation"]
+            names = ["boundary", "overlap", "setback", "fire_separation", "slope"]
+        else:
+            names = ["boundary", "overlap", "setback", "separation"]
+
+        if self.gateways:
+            names.append("gateway_clearance")
+
+        return names
 
 
 # =============================================================================
