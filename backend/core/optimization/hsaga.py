@@ -222,14 +222,28 @@ class HSAGAOptimizer(Optimizer):
 
     def _generate_road_network(self, best_solution: Solution) -> Tuple[List, List, Dict]:
         """
-        Generate road network from optimized building positions.
+        Generate road network from optimized building positions using tensor fields.
 
         Returns:
             Tuple of (major_roads, minor_roads, road_stats)
         """
-        # Placeholder - actual implementation would use tensor field generator
-        # This preserves the interface for now
-        return [], [], {"n_major_roads": 0, "n_minor_roads": 0, "total_length_m": 0}
+        try:
+            from backend.core.geospatial.road_network_generator import RoadNetworkGenerator
+
+            # Create generator
+            generator = RoadNetworkGenerator(bounds=self.bounds)
+
+            # Generate network
+            major_roads, minor_roads, stats = generator.generate(self.buildings)
+
+            return major_roads, minor_roads, stats
+
+        except Exception as e:
+            # Fallback if road generation fails
+            import logging
+
+            logging.warning(f"Road network generation failed: {e}. Using empty network.")
+            return [], [], {"n_major_roads": 0, "n_minor_roads": 0, "total_length_m": 0}
 
     def evaluate_solution(self, solution: Solution) -> float:
         """
