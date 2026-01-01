@@ -545,44 +545,10 @@ class HybridSAGA(Optimizer):
 
     def optimize(self) -> Dict:
         """
-        Complete H-SAGA optimization pipeline.
-
-        Two-stage approach (Li et al. 2025):
-        1. Stage 1: Simulated Annealing (global exploration)
-        2. Stage 2: Genetic Algorithm (local refinement)
+        Run H-SAGA optimization: SA (global exploration) → GA (local refinement).
 
         Returns:
-            Dictionary with complete optimization results:
-            {
-                'best_solution': Solution,           # Best solution found
-                'fitness': float,                    # Best fitness value
-                'objectives': {                      # Individual objectives
-                    'cost': float,
-                    'walking': float,
-                    'adjacency': float
-                },
-                'statistics': {                      # Runtime statistics
-                    'runtime': float,                # Total time (seconds)
-                    'sa_time': float,                # SA phase time
-                    'ga_time': float,                # GA phase time
-                    'iterations': int,               # Total SA iterations
-                    'evaluations': int,              # Total fitness evaluations
-                    'sa_chains': int,                # Number of SA chains
-                    'ga_generations': int            # Number of GA generations
-                },
-                'convergence': {                     # Convergence tracking
-                    'sa_history': List[float],       # SA best fitness per temp
-                    'ga_best_history': List[float],  # GA best fitness per gen
-                    'ga_avg_history': List[float]    # GA avg fitness per gen
-                },
-                'all_solutions': List[Solution]     # All final solutions (for analysis)
-            }
-
-        Example:
-            >>> optimizer = HybridSAGA(buildings, bounds)
-            >>> result = optimizer.optimize()
-            >>> print(f"Best fitness: {result['fitness']:.4f}")
-            >>> print(f"Runtime: {result['statistics']['runtime']:.1f}s")
+            Dict with best_solution, fitness, objectives, statistics, convergence data
         """
         # Print optimization start header
         self._print_optimization_header()
@@ -919,30 +885,20 @@ class HybridSAGA(Optimizer):
 
     def _initialize_ga_population(self, sa_solutions: List[Solution]) -> List[Solution]:
         """
-        Initialize GA population from SA results.
-
-        Strategy (research-based from Li et al. 2025):
-        - 50% from best SA solutions (exploitation)
-        - 30% perturbations of SA solutions (exploration)
-        - 20% random solutions (diversity)
-
-        This hybrid initialization balances:
-        - Quality (SA solutions are already optimized)
-        - Diversity (random + perturbations prevent premature convergence)
+        Initialize GA population: 50% SA solutions, 30% perturbed, 20% random.
 
         Args:
-            sa_solutions: Best solutions from SA phase (sorted by fitness)
+            sa_solutions: Best solutions from SA phase
 
         Returns:
-            Initial GA population of size self.ga_config['population_size']
+            Initial GA population
         """
         pop_size = self.ga_config["population_size"]
         population = []
 
-        # 1. Add best SA solutions (50%)
+        # 1. Best SA solutions (50%)
         n_sa = min(pop_size // 2, len(sa_solutions))
         for i in range(n_sa):
-            # Deep copy to avoid reference issues
             solution = Solution(
                 positions={bid: pos for bid, pos in sa_solutions[i].positions.items()}
             )
@@ -951,35 +907,24 @@ class HybridSAGA(Optimizer):
                 solution.objectives = sa_solutions[i].objectives.copy()
             population.append(solution)
 
-        logger.info(f"GA init: Added {n_sa} SA solutions")
-
-        # 2. Add perturbations of SA solutions (30%)
-        n_perturb = int(pop_size * 0.3)
-        for i in range(n_perturb):
-            # Select random SA solution (biased toward best)
-            idx = np.random.randint(0, min(5, len(sa_solutions)))
-            base = sa_solutions[idx]
-
-            # Create copy
+        # 2. Perturbed SA solutions (30%)
+        for _ in range(int(pop_size * 0.3)):
+            base = sa_solutions[self._random_state.randint(0, min(5, len(sa_solutions)))]
             solution = Solution(positions={bid: pos for bid, pos in base.positions.items()})
-
-            # Perturb with moderate temperature
             solution = self._perturb_solution(solution, temperature=50.0)
-            solution.fitness = None  # Invalidate fitness
+            solution.fitness = None
             population.append(solution)
 
-        logger.info(f"GA init: Added {n_perturb} perturbed solutions")
-
-        # 3. Add random solutions (20%)
-        n_random = pop_size - len(population)
-        for i in range(n_random):
+        # 3. Random solutions (20%)
+        for _ in range(pop_size - len(population)):
             solution = self._generate_random_solution()
             solution.fitness = None
             population.append(solution)
 
-        logger.info(f"GA init: Added {n_random} random solutions")
-        logger.info(f"GA init: Total population size = {len(population)}")
-
+        logger.info(
+            f"GA init: {n_sa} SA + {int(pop_size*0.3)} perturbed + "
+            f"{pop_size-len(population)} random = {len(population)} total"
+        )
         return population
 
     def _selection(
@@ -1116,103 +1061,69 @@ class HybridSAGA(Optimizer):
 
         return next_gen
 
-    def _genetic_refinement(self, sa_solutions: List[Solution]) -> List[Solution]:
-        """
-        Stage 2: Genetic Algorithm for local refinement.
-
-        Refines SA solutions through evolutionary optimization.
-
-        Args:
-            sa_solutions: Best solutions from SA phase (seed population)
-
-        Returns:
-            Best solutions from GA evolution (sorted by fitness)
-        """
-        logger.info("🧬 Starting GA Phase...")
-
-        # Initialize population
-        population = self._initialize_ga_population(sa_solutions)
-        logger.info(f"  Initial population: {len(population)} individuals")
-
-        # Evaluate initial population
+    def _evaluate_population(self, population: List[Solution]) -> None:
+        """Evaluate all solutions with None fitness."""
         for solution in population:
             if solution.fitness is None:
                 solution.fitness = self.evaluator.evaluate(solution)
                 self.stats["evaluations"] = self.stats.get("evaluations", 0) + 1
 
+    def _genetic_refinement(self, sa_solutions: List[Solution]) -> List[Solution]:
+        """
+        Stage 2: Genetic Algorithm for local refinement.
+
+        Args:
+            sa_solutions: Best solutions from SA phase
+
+        Returns:
+            Top 10 solutions from GA evolution (sorted by fitness)
+        """
+        logger.info("🧬 Starting GA Phase...")
+
+        # Initialize and evaluate population
+        population = self._initialize_ga_population(sa_solutions)
+        self._evaluate_population(population)
+
         # Track convergence
-        best_fitness_history = []
-        avg_fitness_history = []
+        best_history = []
+        avg_history = []
 
         # Evolution loop
-        generations = self.ga_config["generations"]
-
-        for generation in range(generations):
-            # 1. Selection
+        for generation in range(self.ga_config["generations"]):
+            # Standard GA cycle: Selection → Crossover → Mutation → Replacement
             parents = self._selection(population)
-
-            # 2. Crossover
             offspring = self._crossover(parents)
-
-            # 3. Mutation
             offspring = self._mutation(offspring)
-
-            # 4. Evaluate offspring (only those with invalidated fitness)
-            for solution in offspring:
-                if solution.fitness is None:
-                    solution.fitness = self.evaluator.evaluate(solution)
-                    self.stats["evaluations"] = self.stats.get("evaluations", 0) + 1
-
-            # 5. Replacement (elitism)
+            self._evaluate_population(offspring)
             population = self._replacement(population, offspring)
 
-            # Track statistics
+            # Track convergence statistics
             fitnesses = [s.fitness for s in population if s.fitness is not None]
-            if fitnesses:
-                best_fitness = max(fitnesses)
-                avg_fitness = np.mean(fitnesses)
-            else:
-                best_fitness = 0.0
-                avg_fitness = 0.0
+            best_history.append(max(fitnesses) if fitnesses else 0.0)
+            avg_history.append(np.mean(fitnesses) if fitnesses else 0.0)
 
-            best_fitness_history.append(best_fitness)
-            avg_fitness_history.append(avg_fitness)
-
-            # Log progress
+            # Log progress every 10 generations
             if generation % 10 == 0:
                 logger.info(
-                    f"  Gen {generation}/{generations}: "
-                    f"Best={best_fitness:.4f}, "
-                    f"Avg={avg_fitness:.4f}"
+                    f"  Gen {generation}: Best={best_history[-1]:.4f}, Avg={avg_history[-1]:.4f}"
                 )
 
-        # Final generation stats
-        fitnesses = [s.fitness for s in population if s.fitness is not None]
-        if fitnesses:
-            best = max(
-                population,
-                key=lambda s: s.fitness if s.fitness is not None else float("-inf"),
-            )
-        else:
-            best = population[0]
-
-        logger.info("✅ GA Phase complete.")
-        best_fitness_val = best.fitness if best.fitness else 0.0
-        logger.info(f"  Final best fitness: {best_fitness_val:.4f}")
-        if len(best_fitness_history) > 1:
-            improvement = best_fitness_history[-1] - best_fitness_history[0]
-            logger.info(f"  Improvement: {improvement:+.4f}")
-
         # Store convergence history
-        self.stats["ga_best_history"] = best_fitness_history
-        self.stats["ga_avg_history"] = avg_fitness_history
+        self.stats["ga_best_history"] = best_history
+        self.stats["ga_avg_history"] = avg_history
 
-        # Return top solutions (sorted)
+        # Log completion
+        improvement = best_history[-1] - best_history[0]
+        logger.info(
+            f"✅ GA Phase complete. Best: {best_history[-1]:.4f}, Improvement: {improvement:+.4f}"
+        )
+
+        # Return top 10 solutions
         population.sort(
             key=lambda s: s.fitness if s.fitness is not None else float("-inf"),
             reverse=True,
         )
-        return population[:10]  # Return top 10
+        return population[:10]
 
     def evaluate_solution(self, solution: Solution) -> float:
         """
