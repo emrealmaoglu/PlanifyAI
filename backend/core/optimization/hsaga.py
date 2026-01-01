@@ -362,6 +362,187 @@ class HybridSAGA(Optimizer):
             random_state=self._random_state,
         )
 
+    def _print_optimization_header(self) -> None:
+        """Print H-SAGA optimization start header."""
+        print("\n" + "=" * 70)
+        print("🚀 H-SAGA OPTIMIZATION START")
+        print("=" * 70)
+        print(f"📍 Area: {self.bounds}")
+        print(f"🏢 Buildings: {len(self.buildings)}")
+        print("⚙️  Configuration:")
+        print(f"   SA Chains: {self.sa_config['num_chains']}")
+        print(f"   SA Iterations/Chain: {self.sa_config['chain_iterations']}")
+        print(f"   GA Population: {self.ga_config['population_size']}")
+        print(f"   GA Generations: {self.ga_config['generations']}")
+        print("=" * 70)
+        print()
+
+    def _print_final_results(
+        self, best_solution: Solution, total_time: float, sa_time: float, ga_time: float
+    ) -> None:
+        """Print final optimization results and statistics."""
+        print("=" * 70)
+        print("✅ H-SAGA OPTIMIZATION COMPLETE")
+        print("=" * 70)
+        print(f"🏆 Best fitness: {best_solution.fitness:.4f}")
+        print(f"⏱️  Total runtime: {total_time:.2f}s")
+        print(f"   └─ SA: {sa_time:.2f}s ({sa_time/total_time*100:.1f}%)")
+        print(f"   └─ GA: {ga_time:.2f}s ({ga_time/total_time*100:.1f}%)")
+        print()
+
+        # Get objectives if available
+        objectives = {}
+        if hasattr(best_solution, "objectives") and best_solution.objectives:
+            objectives = best_solution.objectives.copy()
+        else:
+            objectives = {"cost": 0.0, "walking": 0.0, "adjacency": 0.0}
+
+        print("📊 Objective Breakdown:")
+        for obj_name, score in objectives.items():
+            print(f"   • {obj_name.capitalize():<12}: {score:.4f}")
+        print()
+
+        print("📈 Statistics:")
+        print(f"   • Total evaluations: {self.stats.get('evaluations', 0):,}")
+        print(f"   • SA iterations: {self.stats.get('iterations', 0):,}")
+        print(f"   • GA generations: {self.ga_config['generations']}")
+        print("=" * 70)
+        print()
+
+    def _generate_road_network(self, best_solution: Solution) -> Tuple[List, List, Dict]:
+        """
+        Generate road network from optimized building positions.
+
+        Args:
+            best_solution: Best solution with building positions
+
+        Returns:
+            Tuple of (major_roads, minor_roads, road_stats)
+        """
+        print("🛣️  Generating road network...")
+        road_start = time.perf_counter()
+
+        # Get buildings with positions from best solution
+        buildings_with_positions = []
+        for building in self.buildings:
+            if building.id in best_solution.positions:
+                building_copy = Building(
+                    id=building.id,
+                    type=building.type,
+                    area=building.area,
+                    floors=building.floors,
+                    position=best_solution.positions[building.id],
+                    constraints=building.constraints.copy() if building.constraints else {},
+                )
+                buildings_with_positions.append(building_copy)
+
+        # Generate road network
+        major_roads = []
+        minor_roads = []
+        road_stats = {}
+
+        try:
+            from src.spatial.road_network import RoadNetworkConfig, RoadNetworkGenerator
+
+            road_config = RoadNetworkConfig(
+                n_major_roads=4,
+                major_road_max_length=500.0,
+                n_agents_per_building=2,
+                agent_max_steps=30,
+            )
+
+            road_generator = RoadNetworkGenerator(
+                bounds=self.bounds,
+                config=road_config,
+            )
+
+            major_roads, minor_roads = road_generator.generate(buildings_with_positions)
+            road_stats = road_generator.get_stats()
+
+            road_time = time.perf_counter() - road_start
+            print(f"✅ Road network generated in {road_time:.2f}s")
+            print(f"   Major roads: {road_stats.get('n_major_roads', 0)}")
+            print(f"   Minor roads: {road_stats.get('n_minor_roads', 0)}")
+            print(f"   Total length: {road_stats.get('total_length_m', 0):.0f}m")
+        except Exception as e:
+            logger.warning(f"Road generation failed: {e}")
+
+        return major_roads, minor_roads, road_stats
+
+    def _prepare_result(
+        self,
+        best_solution: Solution,
+        all_solutions: List[Solution],
+        total_time: float,
+        sa_time: float,
+        ga_time: float,
+        major_roads: List,
+        minor_roads: List,
+        road_stats: Dict,
+    ) -> Dict:
+        """
+        Prepare final optimization result dictionary.
+
+        Args:
+            best_solution: Best solution found
+            all_solutions: All final solutions (SA + GA)
+            total_time: Total optimization time
+            sa_time: SA phase time
+            ga_time: GA phase time
+            major_roads: Major road segments
+            minor_roads: Minor road segments
+            road_stats: Road network statistics
+
+        Returns:
+            Complete result dictionary
+        """
+        # Get objectives
+        objectives = {}
+        if hasattr(best_solution, "objectives") and best_solution.objectives:
+            objectives = best_solution.objectives.copy()
+        else:
+            objectives = {"cost": 0.0, "walking": 0.0, "adjacency": 0.0}
+
+        # Calculate constraint information if available
+        constraint_info = {}
+        if self.constraint_manager is not None and self.campus_data is not None:
+            constraint_info = {
+                "satisfied": self.constraint_manager.check_all(
+                    best_solution, self.campus_data, self.buildings
+                ),
+                "violations": self.constraint_manager.violations(
+                    best_solution, self.campus_data, self.buildings
+                ),
+                "penalty": self.constraint_manager.total_penalty(
+                    best_solution, self.campus_data, self.buildings
+                ),
+            }
+
+        return {
+            "best_solution": best_solution,
+            "fitness": best_solution.fitness,
+            "objectives": objectives,
+            "constraints": constraint_info,
+            "statistics": {
+                "runtime": total_time,
+                "sa_time": sa_time,
+                "ga_time": ga_time,
+                "iterations": self.stats.get("iterations", 0),
+                "evaluations": self.stats.get("evaluations", 0),
+                "sa_chains": self.sa_config["num_chains"],
+                "ga_generations": self.ga_config["generations"],
+            },
+            "convergence": {
+                "sa_history": self.stats.get("convergence_history", []),
+                "ga_best_history": self.stats.get("ga_best_history", []),
+                "ga_avg_history": self.stats.get("ga_avg_history", []),
+            },
+            "all_solutions": all_solutions,
+            "major_roads": major_roads,
+            "minor_roads": minor_roads,
+            "road_stats": road_stats,
+        }
+
     def optimize(self) -> Dict:
         """
         Complete H-SAGA optimization pipeline.
@@ -403,19 +584,8 @@ class HybridSAGA(Optimizer):
             >>> print(f"Best fitness: {result['fitness']:.4f}")
             >>> print(f"Runtime: {result['statistics']['runtime']:.1f}s")
         """
-        # Print header
-        print("\n" + "=" * 70)
-        print("🚀 H-SAGA OPTIMIZATION START")
-        print("=" * 70)
-        print(f"📍 Area: {self.bounds}")
-        print(f"🏢 Buildings: {len(self.buildings)}")
-        print("⚙️  Configuration:")
-        print(f"   SA Chains: {self.sa_config['num_chains']}")
-        print(f"   SA Iterations/Chain: {self.sa_config['chain_iterations']}")
-        print(f"   GA Population: {self.ga_config['population_size']}")
-        print(f"   GA Generations: {self.ga_config['generations']}")
-        print("=" * 70)
-        print()
+        # Print optimization start header
+        self._print_optimization_header()
 
         # Initialize statistics
         self.stats["evaluations"] = 0
@@ -466,136 +636,23 @@ class HybridSAGA(Optimizer):
 
         total_time = time.perf_counter() - start_time
 
-        # ========================================
-        # PRINT FINAL RESULTS
-        # ========================================
-        print("=" * 70)
-        print("✅ H-SAGA OPTIMIZATION COMPLETE")
-        print("=" * 70)
-        print(f"🏆 Best fitness: {best_solution.fitness:.4f}")
-        print(f"⏱️  Total runtime: {total_time:.2f}s")
-        print(f"   └─ SA: {sa_time:.2f}s ({sa_time/total_time*100:.1f}%)")
-        print(f"   └─ GA: {ga_time:.2f}s ({ga_time/total_time*100:.1f}%)")
-        print()
-
-        # Get objectives if available
-        objectives = {}
-        if hasattr(best_solution, "objectives") and best_solution.objectives:
-            objectives = best_solution.objectives.copy()
-        else:
-            # Calculate objectives if not stored
-            objectives = {
-                "cost": 0.0,
-                "walking": 0.0,
-                "adjacency": 0.0,
-            }
-
-        print("📊 Objective Breakdown:")
-        for obj_name, score in objectives.items():
-            print(f"   • {obj_name.capitalize():<12}: {score:.4f}")
-        print()
-
-        print("📈 Statistics:")
-        print(f"   • Total evaluations: {self.stats.get('evaluations', 0):,}")
-        print(f"   • SA iterations: {self.stats.get('iterations', 0):,}")
-        print(f"   • GA generations: {self.ga_config['generations']}")
-        print("=" * 70)
-        print()
-
-        # Calculate constraint information if available
-        constraint_info = {}
-        if self.constraint_manager is not None and self.campus_data is not None:
-            constraint_info = {
-                "satisfied": self.constraint_manager.check_all(
-                    best_solution, self.campus_data, self.buildings
-                ),
-                "violations": self.constraint_manager.violations(
-                    best_solution, self.campus_data, self.buildings
-                ),
-                "penalty": self.constraint_manager.total_penalty(
-                    best_solution, self.campus_data, self.buildings
-                ),
-            }
-
-        # ========================================
-        # ROAD NETWORK GENERATION (Day 2)
-        # ========================================
-        print("🛣️  Generating road network...")
-        road_start = time.perf_counter()
-
-        # Get buildings with positions from best solution
-        buildings_with_positions = []
-        for building in self.buildings:
-            if building.id in best_solution.positions:
-                building_copy = Building(
-                    id=building.id,
-                    type=building.type,
-                    area=building.area,
-                    floors=building.floors,
-                    position=best_solution.positions[building.id],
-                    constraints=building.constraints.copy() if building.constraints else {},
-                )
-                buildings_with_positions.append(building_copy)
+        # Print final results and statistics
+        self._print_final_results(best_solution, total_time, sa_time, ga_time)
 
         # Generate road network
-        major_roads = []
-        minor_roads = []
-        road_stats = {}
+        major_roads, minor_roads, road_stats = self._generate_road_network(best_solution)
 
-        try:
-            from src.spatial.road_network import RoadNetworkConfig, RoadNetworkGenerator
-
-            road_config = RoadNetworkConfig(
-                n_major_roads=4,
-                major_road_max_length=500.0,
-                n_agents_per_building=2,
-                agent_max_steps=30,
-            )
-
-            road_generator = RoadNetworkGenerator(
-                bounds=self.bounds,
-                config=road_config,
-            )
-
-            major_roads, minor_roads = road_generator.generate(buildings_with_positions)
-            road_stats = road_generator.get_stats()
-
-            road_time = time.perf_counter() - road_start
-            print(f"✅ Road network generated in {road_time:.2f}s")
-            print(f"   Major roads: {road_stats.get('n_major_roads', 0)}")
-            print(f"   Minor roads: {road_stats.get('n_minor_roads', 0)}")
-            print(f"   Total length: {road_stats.get('total_length_m', 0):.0f}m")
-        except Exception as e:
-            logger.warning(f"Road generation failed: {e}")
-            road_time = 0.0
-
-        # Prepare result dictionary
-        result = {
-            "best_solution": best_solution,
-            "fitness": best_solution.fitness,
-            "objectives": objectives,
-            "constraints": constraint_info,
-            "statistics": {
-                "runtime": total_time,
-                "sa_time": sa_time,
-                "ga_time": ga_time,
-                "iterations": self.stats.get("iterations", 0),
-                "evaluations": self.stats.get("evaluations", 0),
-                "sa_chains": self.sa_config["num_chains"],
-                "ga_generations": self.ga_config["generations"],
-            },
-            "convergence": {
-                "sa_history": self.stats.get("convergence_history", []),
-                "ga_best_history": self.stats.get("ga_best_history", []),
-                "ga_avg_history": self.stats.get("ga_avg_history", []),
-            },
-            "all_solutions": all_solutions,
-            "major_roads": major_roads,
-            "minor_roads": minor_roads,
-            "road_stats": road_stats,
-        }
-
-        return result
+        # Prepare and return result dictionary
+        return self._prepare_result(
+            best_solution,
+            all_solutions,
+            total_time,
+            sa_time,
+            ga_time,
+            major_roads,
+            minor_roads,
+            road_stats,
+        )
 
     def _simulated_annealing(self) -> List[Solution]:
         """
