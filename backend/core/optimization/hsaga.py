@@ -14,6 +14,16 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from backend.core.algorithms.crossover.uniform import UniformCrossover
+from backend.core.algorithms.mutation.operators import (
+    GaussianMutation,
+    RandomResetMutation,
+    SwapMutation,
+)
+
+# Genetic algorithm operators (extracted for modularity and testability)
+from backend.core.algorithms.selection.tournament import TournamentSelector
+
 from .base import Optimizer
 from .building import Building
 from .fitness import FitnessEvaluator
@@ -313,6 +323,44 @@ class HybridSAGA(Optimizer):
             "elite_size": 5,  # Number of elite individuals
             "tournament_size": 3,  # Tournament selection size
         }
+
+        # Initialize GA operators (extracted for modularity and testability)
+        # All operators share a single random state for reproducibility
+        self._random_state = np.random.RandomState()
+
+        # Selection operator
+        self._tournament_selector = TournamentSelector(
+            tournament_size=self.ga_config["tournament_size"],
+            random_state=self._random_state,
+        )
+
+        # Crossover operator
+        self._crossover_operator = UniformCrossover(
+            crossover_rate=self.ga_config["crossover_rate"],
+            swap_probability=0.5,
+            random_state=self._random_state,
+        )
+
+        # Mutation operators (composite strategy: 70% Gaussian, 20% Swap, 10% Reset)
+        self._gaussian_mutation = GaussianMutation(
+            mutation_rate=self.ga_config["mutation_rate"],
+            sigma=30.0,
+            bounds=self.bounds,
+            margin=10.0,
+            random_state=self._random_state,
+        )
+
+        self._swap_mutation = SwapMutation(
+            mutation_rate=self.ga_config["mutation_rate"],
+            random_state=self._random_state,
+        )
+
+        self._random_reset_mutation = RandomResetMutation(
+            mutation_rate=self.ga_config["mutation_rate"],
+            bounds=self.bounds,
+            margin=10.0,
+            random_state=self._random_state,
+        )
 
     def optimize(self) -> Dict:
         """
@@ -771,12 +819,12 @@ class HybridSAGA(Optimizer):
 
     def _perturb_solution(self, solution: Solution, temperature: float) -> Solution:
         """
-        Generate neighbor solution via temperature-adaptive perturbation.
+        Generate neighbor solution via temperature-adaptive perturbation (SA phase).
 
-        Applies one of three perturbation operators:
-        - Gaussian move (80%): σ = T/10, single building position jitter
-        - Swap buildings (15%): Exchange positions of two buildings
-        - Random reset (5%): Completely randomize one building position
+        Applies one of three perturbation operators using extracted mutation operators:
+        - Gaussian move (80%): σ = T/10, temperature-adaptive
+        - Swap buildings (15%): Exchange positions
+        - Random reset (5%): Completely randomize position
 
         Step size adapts to temperature: large moves when hot, fine-tuning when cold.
 
@@ -787,56 +835,29 @@ class HybridSAGA(Optimizer):
         Returns:
             New Solution (neighbor)
         """
-        # Create copy
         new_solution = solution.copy()
-        new_positions = new_solution.positions.copy()
-
-        # Select perturbation operator based on probability
-        rand = np.random.random()
+        rand = self._random_state.random()
 
         if rand < 0.80:
-            # Gaussian move (80%)
-            building_id = np.random.choice(list(new_positions.keys()))
-            x, y = new_positions[building_id]
-
-            # Adaptive step size: σ = T/10
-            sigma = max(temperature / 10.0, 0.1)  # Minimum 0.1m
-
-            dx = np.random.normal(0, sigma)
-            dy = np.random.normal(0, sigma)
-
-            # Clip to bounds
-            x_min, y_min, x_max, y_max = self.bounds
-            building = next(b for b in self.buildings if b.id == building_id)
-            margin = building.radius + 5.0
-
-            new_x = np.clip(x + dx, x_min + margin, x_max - margin)
-            new_y = np.clip(y + dy, y_min + margin, y_max - margin)
-
-            new_positions[building_id] = (new_x, new_y)
+            # Gaussian move with temperature-adaptive sigma
+            sigma = max(temperature / 10.0, 0.1)
+            temp_gaussian = GaussianMutation(
+                mutation_rate=1.0,  # Always apply
+                sigma=sigma,
+                bounds=self.bounds,
+                margin=5.0,
+                random_state=self._random_state,
+            )
+            temp_gaussian.mutate(new_solution)
 
         elif rand < 0.95:
-            # Swap buildings (15%)
-            building_ids = list(new_positions.keys())
-            if len(building_ids) >= 2:
-                id1, id2 = np.random.choice(building_ids, size=2, replace=False)
-                new_positions[id1], new_positions[id2] = (
-                    new_positions[id2],
-                    new_positions[id1],
-                )
+            # Swap mutation
+            self._swap_mutation.mutate(new_solution)
 
         else:
-            # Random reset (5%)
-            building_id = np.random.choice(list(new_positions.keys()))
-            x_min, y_min, x_max, y_max = self.bounds
-            building = next(b for b in self.buildings if b.id == building_id)
-            margin = building.radius + 5.0
+            # Random reset
+            self._random_reset_mutation.mutate(new_solution)
 
-            x = np.random.uniform(x_min + margin, x_max - margin)
-            y = np.random.uniform(y_min + margin, y_max - margin)
-            new_positions[building_id] = (x, y)
-
-        new_solution.positions = new_positions
         return new_solution
 
     def _initialize_ga_population(self, sa_solutions: List[Solution]) -> List[Solution]:
@@ -904,69 +925,18 @@ class HybridSAGA(Optimizer):
 
         return population
 
-    def _tournament_selection(
-        self, population: List[Solution], tournament_size: Optional[int] = None
-    ) -> Solution:
-        """
-        Tournament selection operator.
-
-        Randomly selects k individuals from population, returns the best.
-        This creates selection pressure while maintaining diversity.
-
-        Args:
-            population: Current population
-            tournament_size: Number of individuals in tournament
-                            (default: self.ga_config['tournament_size'])
-
-        Returns:
-            Selected solution (deep copy to avoid reference issues)
-
-        Raises:
-            ValueError: If tournament_size > population size
-        """
-        if tournament_size is None:
-            tournament_size = self.ga_config["tournament_size"]
-
-        if tournament_size > len(population):
-            raise ValueError(
-                f"Tournament size ({tournament_size}) cannot exceed "
-                f"population size ({len(population)})"
-            )
-
-        # Randomly select tournament candidates
-        indices = np.random.choice(len(population), tournament_size, replace=False)
-        candidates = [population[i] for i in indices]
-
-        # Select best (highest fitness)
-        # Filter out None fitness values
-        valid_candidates = [s for s in candidates if s.fitness is not None]
-        if not valid_candidates:
-            # If all have None fitness, just return first
-            winner = candidates[0]
-        else:
-            winner = max(valid_candidates, key=lambda s: s.fitness)
-
-        # Return deep copy
-        selected = Solution(positions={bid: pos for bid, pos in winner.positions.items()})
-        selected.fitness = winner.fitness
-        if hasattr(winner, "objectives"):
-            selected.objectives = winner.objectives.copy()
-
-        return selected
-
     def _selection(
         self, population: List[Solution], n_parents: Optional[int] = None
     ) -> List[Solution]:
         """
-        Select parents for reproduction.
+        Select parents for reproduction using tournament selection.
 
-        Uses tournament selection to create parent pool.
+        Uses TournamentSelector operator (extracted for testability).
         Default selects population_size // 2 parents.
 
         Args:
             population: Current population (must have fitness evaluated)
-            n_parents: Number of parents to select
-                       (default: len(population) // 2)
+            n_parents: Number of parents to select (default: len(population) // 2)
 
         Returns:
             List of selected parent solutions
@@ -976,59 +946,28 @@ class HybridSAGA(Optimizer):
 
         parents = []
         for _ in range(n_parents):
-            parent = self._tournament_selection(population)
-            parents.append(parent)
+            # Use extracted tournament selector
+            parent = self._tournament_selector.select(population)
+
+            # Deep copy to avoid reference issues
+            selected = Solution(positions={bid: pos for bid, pos in parent.positions.items()})
+            selected.fitness = parent.fitness
+            if hasattr(parent, "objectives"):
+                selected.objectives = parent.objectives.copy()
+
+            parents.append(selected)
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Selected {len(parents)} parents via tournament selection")
 
         return parents
 
-    def _uniform_crossover(self, parent1: Solution, parent2: Solution) -> Tuple[Solution, Solution]:
-        """
-        Uniform crossover operator.
-
-        For each building, randomly select position from parent1 or parent2.
-        This maintains diversity while combining parent traits.
-
-        Args:
-            parent1: First parent solution
-            parent2: Second parent solution
-
-        Returns:
-            Tuple of two offspring solutions
-
-        Note:
-            Each gene (building position) has 50% chance from each parent.
-        """
-        child1_positions = {}
-        child2_positions = {}
-
-        for building_id in parent1.positions.keys():
-            if np.random.random() < 0.5:
-                # Child1 gets parent1's gene, child2 gets parent2's
-                child1_positions[building_id] = parent1.positions[building_id]
-                child2_positions[building_id] = parent2.positions[building_id]
-            else:
-                # Swap
-                child1_positions[building_id] = parent2.positions[building_id]
-                child2_positions[building_id] = parent1.positions[building_id]
-
-        child1 = Solution(positions=child1_positions)
-        child2 = Solution(positions=child2_positions)
-
-        # Fitness needs re-evaluation
-        child1.fitness = None
-        child2.fitness = None
-
-        return child1, child2
-
     def _crossover(self, parents: List[Solution]) -> List[Solution]:
         """
-        Create offspring via crossover.
+        Create offspring via uniform crossover.
 
+        Uses UniformCrossover operator (extracted for testability).
         Pairs up parents and applies crossover based on crossover_rate.
-        If crossover doesn't occur, parents are copied to offspring.
 
         Args:
             parents: Selected parent solutions
@@ -1036,140 +975,21 @@ class HybridSAGA(Optimizer):
         Returns:
             Offspring solutions (approximately same size as parents)
         """
-        offspring = []
-        crossover_rate = self.ga_config["crossover_rate"]
-
-        # Pair up parents (iterate by 2)
-        for i in range(0, len(parents) - 1, 2):
-            parent1 = parents[i]
-            parent2 = parents[i + 1]
-
-            if np.random.random() < crossover_rate:
-                # Apply crossover
-                child1, child2 = self._uniform_crossover(parent1, parent2)
-                offspring.extend([child1, child2])
-            else:
-                # No crossover - copy parents
-                child1 = Solution(positions={bid: pos for bid, pos in parent1.positions.items()})
-                child2 = Solution(positions={bid: pos for bid, pos in parent2.positions.items()})
-                child1.fitness = parent1.fitness
-                child2.fitness = parent2.fitness
-
-                if hasattr(parent1, "objectives"):
-                    child1.objectives = parent1.objectives.copy()
-                if hasattr(parent2, "objectives"):
-                    child2.objectives = parent2.objectives.copy()
-
-                offspring.extend([child1, child2])
-
-        # Handle odd number of parents (last one just gets copied)
-        if len(parents) % 2 == 1:
-            last_parent = parents[-1]
-            child = Solution(positions={bid: pos for bid, pos in last_parent.positions.items()})
-            child.fitness = last_parent.fitness
-            if hasattr(last_parent, "objectives"):
-                child.objectives = last_parent.objectives.copy()
-            offspring.append(child)
+        # Use extracted crossover operator
+        offspring = self._crossover_operator.apply_to_population(parents)
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                f"Crossover: Created {len(offspring)} offspring " f"from {len(parents)} parents"
+                f"Crossover: Created {len(offspring)} offspring from {len(parents)} parents"
             )
 
         return offspring
-
-    def _gaussian_mutation(self, solution: Solution, sigma: Optional[float] = None) -> Solution:
-        """
-        Gaussian mutation: perturb one random building position.
-
-        Uses Gaussian distribution for perturbation, providing local search.
-
-        Args:
-            solution: Solution to mutate (modified in-place)
-            sigma: Standard deviation for Gaussian (default: 30.0 meters)
-
-        Returns:
-            Mutated solution (same object, modified)
-        """
-        if sigma is None:
-            sigma = 30.0
-
-        # Select random building
-        building_id = np.random.choice(list(solution.positions.keys()))
-        x, y = solution.positions[building_id]
-
-        # Gaussian perturbation
-        dx = np.random.normal(0, sigma)
-        dy = np.random.normal(0, sigma)
-
-        # Apply bounds
-        x_min, y_min, x_max, y_max = self.bounds
-        margin = 10  # Meters from edge
-        new_x = np.clip(x + dx, x_min + margin, x_max - margin)
-        new_y = np.clip(y + dy, y_min + margin, y_max - margin)
-
-        # Update position
-        solution.positions[building_id] = (new_x, new_y)
-
-        return solution
-
-    def _swap_mutation(self, solution: Solution) -> Solution:
-        """
-        Swap mutation: exchange positions of two random buildings.
-
-        Provides large-scale exploration without leaving valid space.
-
-        Args:
-            solution: Solution to mutate (modified in-place)
-
-        Returns:
-            Mutated solution (same object, modified)
-        """
-        if len(solution.positions) < 2:
-            return solution  # Can't swap with <2 buildings
-
-        # Select two random buildings
-        building_ids = list(solution.positions.keys())
-        id1, id2 = np.random.choice(building_ids, 2, replace=False)
-
-        # Swap positions
-        solution.positions[id1], solution.positions[id2] = (
-            solution.positions[id2],
-            solution.positions[id1],
-        )
-
-        return solution
-
-    def _random_reset_mutation(self, solution: Solution) -> Solution:
-        """
-        Random reset: completely randomize one building position.
-
-        Provides escape from local optima.
-
-        Args:
-            solution: Solution to mutate (modified in-place)
-
-        Returns:
-            Mutated solution (same object, modified)
-        """
-        # Select random building
-        building_id = np.random.choice(list(solution.positions.keys()))
-
-        # Generate completely new random position
-        x_min, y_min, x_max, y_max = self.bounds
-        margin = 10
-        new_x = np.random.uniform(x_min + margin, x_max - margin)
-        new_y = np.random.uniform(y_min + margin, y_max - margin)
-
-        solution.positions[building_id] = (new_x, new_y)
-
-        return solution
 
     def _mutation(self, offspring: List[Solution]) -> List[Solution]:
         """
         Apply mutation to offspring population.
 
-        Mutation distribution (research-based):
+        Uses composite mutation strategy (extracted operators):
         - Gaussian: 70% (local search)
         - Swap: 20% (exploration)
         - Random reset: 10% (escape mechanism)
@@ -1178,22 +998,23 @@ class HybridSAGA(Optimizer):
             offspring: Offspring solutions to potentially mutate
 
         Returns:
-            Mutated offspring (modified in-place, same list returned)
+            Mutated offspring
         """
-        mutation_rate = self.ga_config["mutation_rate"]
         mutated_count = 0
 
         for solution in offspring:
-            if np.random.random() < mutation_rate:
-                # Select mutation type
-                mut_type = np.random.choice(["gaussian", "swap", "reset"], p=[0.7, 0.2, 0.1])
+            if self._random_state.random() < self.ga_config["mutation_rate"]:
+                # Select mutation type based on research-backed distribution
+                mut_type = self._random_state.choice(
+                    ["gaussian", "swap", "reset"], p=[0.7, 0.2, 0.1]
+                )
 
                 if mut_type == "gaussian":
-                    solution = self._gaussian_mutation(solution)
+                    self._gaussian_mutation.mutate(solution)
                 elif mut_type == "swap":
-                    solution = self._swap_mutation(solution)
+                    self._swap_mutation.mutate(solution)
                 else:  # reset
-                    solution = self._random_reset_mutation(solution)
+                    self._random_reset_mutation.mutate(solution)
 
                 # Invalidate fitness (needs re-evaluation)
                 solution.fitness = None
