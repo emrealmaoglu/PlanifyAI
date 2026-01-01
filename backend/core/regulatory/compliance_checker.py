@@ -141,6 +141,36 @@ class ComplianceViolation:
         }
 
 
+@dataclass
+class ComplianceReport:
+    """
+    Comprehensive compliance report with violations and scoring.
+
+    Attributes:
+        total_violations: Total number of violations
+        violations_by_severity: Dict of severity -> count
+        is_compliant: Whether solution is compliant (no critical/high violations)
+        compliance_score: Score from 0-1 (1 = perfect compliance)
+        violations: List of all violations
+    """
+
+    total_violations: int
+    violations_by_severity: Dict[str, int]
+    is_compliant: bool
+    compliance_score: float
+    violations: List[ComplianceViolation] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "total_violations": self.total_violations,
+            "violations_by_severity": self.violations_by_severity,
+            "is_compliant": self.is_compliant,
+            "compliance_score": self.compliance_score,
+            "violations": [v.to_dict() for v in self.violations],
+        }
+
+
 class ComplianceChecker:
     """
     Automated building code compliance checker for Turkish regulations.
@@ -551,12 +581,61 @@ class ComplianceChecker:
                 )
             )
 
+    def generate_report(
+        self,
+        violations: Optional[List[ComplianceViolation]] = None,
+    ) -> ComplianceReport:
+        """
+        Generate ComplianceReport object with violations and scoring.
+
+        Args:
+            violations: List of violations (uses self.violations if None)
+
+        Returns:
+            ComplianceReport object
+        """
+        if violations is None:
+            violations = self.violations
+
+        # Count by severity
+        by_severity = {sev.value: 0 for sev in ComplianceSeverity}
+        for v in violations:
+            by_severity[v.severity.value] += 1
+
+        # Determine compliance status
+        n_critical = by_severity[ComplianceSeverity.CRITICAL.value]
+        n_high = by_severity[ComplianceSeverity.HIGH.value]
+
+        is_compliant = (n_critical == 0) and (n_high == 0)
+
+        # Calculate compliance score (weighted by severity)
+        weights = {
+            ComplianceSeverity.CRITICAL.value: 1.0,
+            ComplianceSeverity.HIGH.value: 0.6,
+            ComplianceSeverity.MEDIUM.value: 0.3,
+            ComplianceSeverity.LOW.value: 0.1,
+            ComplianceSeverity.INFO.value: 0.0,
+        }
+
+        total_penalty = sum(by_severity[sev] * weights[sev] for sev in by_severity)
+        max_penalty = 10.0  # Normalize to 10 violations as baseline
+
+        compliance_score = max(0.0, 1.0 - (total_penalty / max_penalty))
+
+        return ComplianceReport(
+            total_violations=len(violations),
+            violations_by_severity=by_severity,
+            is_compliant=is_compliant,
+            compliance_score=compliance_score,
+            violations=violations,
+        )
+
     def generate_compliance_report(
         self,
         violations: Optional[List[ComplianceViolation]] = None,
     ) -> Dict[str, Any]:
         """
-        Generate comprehensive compliance report.
+        Generate comprehensive compliance report (dict format for backward compatibility).
 
         Args:
             violations: List of violations (uses self.violations if None)
