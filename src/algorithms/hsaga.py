@@ -14,6 +14,13 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from .adaptive_cooling import (
+    adaptive_cooling_specific_heat,
+    adaptive_markov_length,
+    calculate_reheat_temperature,
+    should_reheat,
+    track_phase_transition,
+)
 from .base import Optimizer
 from .building import Building
 from .fitness import FitnessEvaluator
@@ -320,14 +327,20 @@ class HybridSAGA(Optimizer):
         if logger.isEnabledFor(logging.INFO):
             logger.info(f"Cached building properties for {len(buildings)} buildings")
 
-        # SA configuration (Li et al. 2025 + research synthesis)
+        # SA configuration (Li et al. 2025 + research synthesis + adaptive cooling)
         self.sa_config = sa_config or {
             "initial_temp": 1000.0,
             "final_temp": 0.1,
-            "cooling_rate": 0.95,  # Geometric schedule
+            "cooling_rate": 0.95,  # Base alpha for adaptive cooling
             "max_iterations": 500,
             "num_chains": 4,  # M1: 4 performance cores
             "chain_iterations": 500,
+            # Adaptive cooling parameters (Week 4 Day 4)
+            "enable_adaptive_cooling": True,  # Fitness variance-based cooling
+            "enable_reheating": True,  # Escape local minima
+            "stagnation_threshold": 50,  # Iterations before reheating
+            "max_reheats": 3,  # Maximum reheats per chain
+            "markov_chain_length": 20,  # Base iterations per temperature
         }
 
         # GA configuration (Day 4)
@@ -725,7 +738,13 @@ class HybridSAGA(Optimizer):
 
     def _run_sa_chain(self, seed: int, config: Dict) -> Solution:
         """
-        Run a single SA chain.
+        Run a single SA chain with adaptive cooling.
+
+        Features:
+        - Fitness variance-based adaptive cooling
+        - Reheating mechanism for escaping local minima
+        - Adaptive Markov chain length
+        - Phase transition tracking
 
         Args:
             seed: Random seed for reproducibility
@@ -741,43 +760,118 @@ class HybridSAGA(Optimizer):
 
         temperature = config["initial_temp"]
         final_temp = config["final_temp"]
-        cooling_rate = config["cooling_rate"]
+        base_cooling_rate = config["cooling_rate"]
         max_iter = config["chain_iterations"]
 
-        # Track convergence for this chain
+        # Adaptive cooling parameters
+        enable_adaptive = config.get("enable_adaptive_cooling", True)
+        enable_reheating = config.get("enable_reheating", True)
+        stagnation_threshold = config.get("stagnation_threshold", 50)
+        max_reheats = config.get("max_reheats", 3)
+        base_markov_length = config.get("markov_chain_length", 20)
+
+        # Tracking variables
+        costs_at_temp = []
+        stagnation_counter = 0
+        reheat_count = 0
+        max_variance = 0.0
+        phase_transition_temp = temperature
+        iteration = 0
         chain_history = []
 
-        # SA loop
-        for iteration in range(max_iter):
-            # Generate neighbor
-            neighbor = self._perturb_solution(current, temperature)
-            neighbor.fitness = self.evaluator.evaluate(neighbor)
+        logger.debug(
+            f"Chain {seed}: T₀={temperature:.2f}, "
+            f"adaptive={enable_adaptive}, reheating={enable_reheating}"
+        )
 
-            # Calculate delta
-            delta = neighbor.fitness - current.fitness
+        # SA loop with adaptive cooling
+        while iteration < max_iter and temperature > final_temp:
+            # Adaptive Markov chain length
+            if enable_adaptive and len(costs_at_temp) >= 10:
+                markov_length = adaptive_markov_length(
+                    base_markov_length, costs_at_temp, min_length=10, max_length=100
+                )
+            else:
+                markov_length = base_markov_length
 
-            # Metropolis criterion
-            if delta > 0 or np.random.random() < np.exp(delta / temperature):
-                current = neighbor
-                if current.fitness > best.fitness:
-                    best = current.copy()
+            # Run Markov chain at current temperature
+            for _ in range(markov_length):
+                # Generate neighbor
+                neighbor = self._perturb_solution(current, temperature)
+                neighbor.fitness = self.evaluator.evaluate(neighbor)
+                costs_at_temp.append(neighbor.fitness)
 
-            # Cool down
-            temperature *= cooling_rate
+                # Calculate delta
+                delta = neighbor.fitness - current.fitness
+
+                # Metropolis criterion
+                accepted = delta > 0 or np.random.random() < np.exp(delta / temperature)
+
+                if accepted:
+                    current = neighbor
+                    if current.fitness > best.fitness:
+                        best = current.copy()
+                        stagnation_counter = 0
+                    else:
+                        stagnation_counter += 1
+                else:
+                    stagnation_counter += 1
+
+                iteration += 1
+                if iteration >= max_iter:
+                    break
+
+            # Track phase transition (max variance point)
+            if enable_adaptive and len(costs_at_temp) >= 10:
+                max_variance, phase_transition_temp = track_phase_transition(
+                    costs_at_temp, temperature, max_variance, phase_transition_temp
+                )
+
+            # Check for reheating trigger
+            if enable_reheating and should_reheat(
+                stagnation_counter, stagnation_threshold, reheat_count, max_reheats
+            ):
+                logger.info(
+                    f"🔥 Chain {seed}: Reheating at iter {iteration} "
+                    f"(stagnation={stagnation_counter})"
+                )
+
+                # Calculate reheat temperature
+                temperature = calculate_reheat_temperature(
+                    best.fitness, phase_transition_temp, config["initial_temp"], final_temp, K=0.5
+                )
+
+                reheat_count += 1
+                stagnation_counter = 0
+                costs_at_temp = []
+
+                logger.debug(f"   New temperature: {temperature:.2f}")
+            else:
+                # Adaptive variance-based cooling
+                if enable_adaptive and len(costs_at_temp) >= 20:
+                    temperature = adaptive_cooling_specific_heat(
+                        temperature, costs_at_temp, alpha_nought=base_cooling_rate
+                    )
+                    costs_at_temp = []
+                else:
+                    # Fallback to geometric cooling
+                    temperature *= base_cooling_rate
 
             # Track convergence (every 50 iterations)
             if iteration % 50 == 0:
                 chain_history.append(best.fitness)
                 logger.debug(
                     f"Chain {seed}, Iter {iteration}: T={temperature:.2f}, "
-                    f"fitness={best.fitness:.4f}"
+                    f"fitness={best.fitness:.4f}, reheats={reheat_count}"
                 )
 
-            # Early stopping if temperature too low
-            if temperature < final_temp:
-                break
+        # Log final statistics
+        logger.info(
+            f"Chain {seed} complete: fitness={best.fitness:.4f}, "
+            f"iterations={iteration}, reheats={reheat_count}"
+        )
 
-        # Update global convergence history (average across chains)
+        # Update global convergence history
         if not hasattr(self, "_chain_histories"):
             self._chain_histories = []
         self._chain_histories.append(chain_history)
