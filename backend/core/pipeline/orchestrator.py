@@ -24,7 +24,7 @@ from enum import Enum
 from pathlib import Path
 import numpy as np
 
-from shapely.geometry import Polygon, mapping
+from shapely.geometry import Polygon, mapping, LineString
 
 # Core imports
 from backend.core.domain.geometry.osm_service import OSMContextFetcher, CampusContext
@@ -32,6 +32,10 @@ from backend.core.schemas.input import OptimizationRequest, SiteParameters, Opti
 from backend.core.physics.solar import SolarPenaltyCalculator
 from backend.core.physics.wind import WindDataFetcher, WindData
 from backend.core.constraints.manual_constraints import ManualConstraintManager
+
+# Sprint 3: Gateway road generation
+from backend.core.domain.geometry.gateway_roads import GatewayRoadNetwork
+from backend.core.domain.geometry.gateway_parser import parse_gateways_from_geojson
 
 # NEW: Phase 6 Engine imports
 from backend.core.optimization.encoding import (
@@ -245,7 +249,7 @@ class OptimizationPipeline:
         self.config = config or PipelineConfig()
         self.stages: List[StageResult] = []
         self.current_stage = PipelineStage.INITIALIZED
-        
+
         # Components (initialized during run)
         self.context: Optional[CampusContext] = None
         self.wind_data: Optional[WindData] = None
@@ -253,6 +257,10 @@ class OptimizationPipeline:
         self.problem: Optional[SpatialOptimizationProblem] = None
         self.runner: Optional[HSAGARunner] = None
         self.hsaga_result: Optional[Dict] = None
+
+        # Sprint 3: Gateway roads
+        self.gateways: List = []
+        self.roads: List[LineString] = []
     
     def _sanitize_float(self, value: float) -> Optional[float]:
         """Ensure float is JSON compliant (no NaN/Inf)."""
@@ -294,13 +302,14 @@ class OptimizationPipeline:
         optimization_goals: Dict[OptimizationGoal, float] = None,
         constraint_geojson: Dict = None,
         boundary_geojson: Dict = None,
+        campus_geojson: Dict = None,
         clear_all_existing: bool = False,
         kept_building_ids: List[str] = None,
         callback: callable = None
     ) -> PipelineResult:
         """
         Run the complete optimization pipeline.
-        
+
         Args:
             latitude: Campus center latitude
             longitude: Campus center longitude
@@ -309,19 +318,27 @@ class OptimizationPipeline:
             optimization_goals: Objective weights (default: balanced)
             constraint_geojson: Optional constraint GeoJSON from God Mode
             boundary_geojson: Optional boundary GeoJSON to override automatic detection
+            campus_geojson: Optional campus GeoJSON with gateways (Sprint 3)
             clear_all_existing: If True, remove all existing buildings
             kept_building_ids: Building IDs to preserve even with clear_all_existing
             callback: Optional callback(stage, progress) for UI updates
-            
+
         Returns:
             PipelineResult with all outputs
         """
         start_time = time.time()
-        
+
         # Apply overrides
         self.building_counts = building_counts or self.config.default_building_counts
         self.site_params = site_parameters or self.config.site_parameters
         self.goals = optimization_goals or self.config.optimization_goals
+
+        # Sprint 3: Parse gateways from campus_geojson
+        if campus_geojson:
+            self.gateways = parse_gateways_from_geojson(campus_geojson)
+            self._log(f"Parsed {len(self.gateways)} gateways from campus GeoJSON")
+        else:
+            self.gateways = []
         
         try:
             # Stage 1: Fetch Context
@@ -338,12 +355,18 @@ class OptimizationPipeline:
             
             # Stage 4: Optimize (NEW ENGINE)
             self._optimize(callback)
-            
+
+            # Sprint 3: Generate roads (after optimization)
+            best_solution = self.hsaga_result.get("best_solution", {})
+            best_polygons = best_solution.get("polygons", [])
+            if self.gateways and best_polygons:
+                self._generate_roads(best_polygons, callback)
+
             # Stage 5: Critique (optional)
             critique_result = None
             if self.config.enable_critique and CRITIQUE_AVAILABLE:
                 critique_result = self._critique(callback)
-            
+
             # Stage 6: Export
             geojson = self._export(callback) if self.config.export_geojson else None
             
@@ -624,9 +647,42 @@ class OptimizationPipeline:
         
         if callback:
             callback(PipelineStage.CRITIQUING, 100)
-        
+
         return result
-    
+
+    def _generate_roads(self, buildings: List[Polygon], callback: callable = None) -> None:
+        """
+        Sprint 3: Generate road network connecting gateways to buildings.
+
+        Args:
+            buildings: List of building polygons
+            callback: Optional callback for progress updates
+        """
+        if callback:
+            callback(PipelineStage.OPTIMIZING, 95)  # Near end of optimization
+
+        if not self.gateways:
+            self.roads = []
+            self._log("No gateways available - skipping road generation")
+            return
+
+        self._log(f"Generating road network for {len(self.gateways)} gateways...")
+
+        network = GatewayRoadNetwork(
+            gateways=self.gateways,
+            min_road_length=10.0
+        )
+
+        self.roads = network.generate(
+            buildings=buildings,
+            use_mst=True,
+            avoid_building_intersections=False
+        )
+
+        if self.config.verbose:
+            total_length = sum(road.length for road in self.roads)
+            self._log(f"Generated {len(self.roads)} road segments ({total_length:.1f}m total)")
+
     def _export(self, callback: callable) -> Dict[str, Any]:
         """Stage 6: Export results as GeoJSON (WGS84 Converted)."""
         self.current_stage = PipelineStage.EXPORTING
@@ -723,7 +779,22 @@ class OptimizationPipeline:
                         "coordinates": [gateway["location"][1], gateway["location"][0]]
                     }
                 })
-        
+
+        # Sprint 3: Add Generated Roads
+        if self.roads:
+            for i, road in enumerate(self.roads):
+                wgs84_road = to_wgs84(road)
+                features.append({
+                    "type": "Feature",
+                    "id": f"road_{i}",
+                    "properties": {
+                        "layer": "road",
+                        "road_id": f"road_{i}",
+                        "length_m": round(road.length, 2)
+                    },
+                    "geometry": mapping(wgs84_road)
+                })
+
         # 5. Add Constraints
         if self.constraint_manager:
             for cid, constraint in self.constraint_manager.constraints.items():

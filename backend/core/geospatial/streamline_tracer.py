@@ -19,12 +19,12 @@ References:
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, List, Optional, Tuple
+from typing import Optional
 
 import numpy as np
 from scipy.integrate import RK45
 
-from src.spatial.tensor_field import TensorField
+from .tensor_field import TensorField
 
 
 class StopReason(Enum):
@@ -166,7 +166,6 @@ def trace_streamline_rk45(
 
     # Path storage
     path = [seed_point.copy()]
-    arc_length = 0.0
     n_steps = 0
     stop_reason = StopReason.SUCCESS
 

@@ -17,6 +17,7 @@ from .base import Optimizer
 from .building import Building, BuildingType, create_sample_campus
 from .fitness import FitnessEvaluator
 from .hsaga import HybridSAGA
+from .hsaga_adaptive import AdaptiveHSAGA
 from .solution import Solution
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     "create_sample_campus",
     "FitnessEvaluator",
     "HybridSAGA",
+    "AdaptiveHSAGA",
 ]
 
 __version__ = "0.1.0"

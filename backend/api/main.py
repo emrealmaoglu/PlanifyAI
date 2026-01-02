@@ -43,6 +43,14 @@ try:
 except ImportError as e:
     print(f"❌ Constraints router failed: {e}")
 
+# New: Campus router (for auto-detection)
+try:
+    from backend.api.routers import campus
+    app.include_router(campus.router)
+    print("✅ Campus router loaded")
+except ImportError as e:
+    print(f"❌ Campus router failed: {e}")
+
 # --- 3. HEALTH CHECK (Load balancer / monitoring) ---
 @app.get("/health")
 async def health_check():

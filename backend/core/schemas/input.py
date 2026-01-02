@@ -64,7 +64,33 @@ class OptimizationRequest(BaseModel):
         default_factory=list,
         description="List of OSM IDs to preserve even if clear_all_existing is True"
     )
-    
+
+    # Gateway-Aware Optimization (Sprint 3)
+    campus_geojson: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Campus GeoJSON from /api/campus/relocate containing gateways and boundary"
+    )
+
+    enable_gateway_optimization: bool = Field(
+        default=False,
+        description="Enable gateway-aware optimization (connectivity, clearance, roads)"
+    )
+
+    gateway_connectivity_weight: float = Field(
+        default=1.0,
+        description="Weight for gateway connectivity objective (0.0-2.0)"
+    )
+
+    gateway_clearance_radius: float = Field(
+        default=50.0,
+        description="Minimum clearance radius around gateways (meters)"
+    )
+
+    gateway_clearance_directional: bool = Field(
+        default=True,
+        description="Use directional clearance zones (extends in bearing direction)"
+    )
+
     # 4. Site Configuration (Zoning Rules)
     site_parameters: SiteParameters = Field(
         default_factory=SiteParameters,
