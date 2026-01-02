@@ -4,8 +4,8 @@ University Campus Location Service
 Üniversite kampüslerini otomatik tespit eder.
 """
 
-from typing import Optional, Tuple, Dict
 import logging
+from typing import Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -22,50 +22,50 @@ class UniversityCampusLocator:
             "lon": 33.777434,
             "name": "Kastamonu Üniversitesi",
             "city": "Kastamonu",
-            "country": "Turkey"
+            "country": "Turkey",
         },
         "kastamonu university": {
             "lat": 41.424274,
             "lon": 33.777434,
             "name": "Kastamonu Üniversitesi",
             "city": "Kastamonu",
-            "country": "Turkey"
+            "country": "Turkey",
         },
         "ankara üniversitesi": {
             "lat": 39.940277,
             "lon": 32.851524,
             "name": "Ankara Üniversitesi",
             "city": "Ankara",
-            "country": "Turkey"
+            "country": "Turkey",
         },
         "hacettepe üniversitesi": {
             "lat": 39.866389,
             "lon": 32.734722,
             "name": "Hacettepe Üniversitesi",
             "city": "Ankara",
-            "country": "Turkey"
+            "country": "Turkey",
         },
         "istanbul üniversitesi": {
             "lat": 41.013611,
             "lon": 28.949722,
             "name": "İstanbul Üniversitesi",
             "city": "İstanbul",
-            "country": "Turkey"
+            "country": "Turkey",
         },
         "odtü": {
             "lat": 39.891944,
             "lon": 32.780833,
             "name": "ODTÜ (Orta Doğu Teknik Üniversitesi)",
             "city": "Ankara",
-            "country": "Turkey"
+            "country": "Turkey",
         },
         "middle east technical university": {
             "lat": 39.891944,
             "lon": 32.780833,
             "name": "ODTÜ (Middle East Technical University)",
             "city": "Ankara",
-            "country": "Turkey"
-        }
+            "country": "Turkey",
+        },
     }
 
     def __init__(self):
@@ -73,9 +73,7 @@ class UniversityCampusLocator:
         self.user_agent = "planifyai/2.0"
 
     def find_university(
-        self,
-        university_name: str,
-        country: str = "Turkey"
+        self, university_name: str, country: str = "Turkey"
     ) -> Optional[Tuple[float, float]]:
         """
         Üniversite adından lat/lon koordinatlarını bulur.
@@ -100,13 +98,13 @@ class UniversityCampusLocator:
         if query_normalized in self.KNOWN_UNIVERSITIES:
             uni = self.KNOWN_UNIVERSITIES[query_normalized]
             logger.info(f"Found university in database: {uni['name']}")
-            return (uni['lat'], uni['lon'])
+            return (uni["lat"], uni["lon"])
 
         # Try partial match
         for key, uni in self.KNOWN_UNIVERSITIES.items():
             if query_normalized in key or key in query_normalized:
                 logger.info(f"Partial match found: {uni['name']}")
-                return (uni['lat'], uni['lon'])
+                return (uni["lat"], uni["lon"])
 
         # Not found
         logger.warning(f"University not found: {university_name}")
@@ -140,12 +138,7 @@ class UniversityCampusLocator:
 
         return None
 
-    def auto_detect_optimal_radius(
-        self,
-        lat: float,
-        lon: float,
-        initial_radius: int = 500
-    ) -> int:
+    def auto_detect_optimal_radius(self, lat: float, lon: float, initial_radius: int = 500) -> int:
         """
         Kampüs büyüklüğüne göre optimal radius hesaplar.
 
@@ -171,8 +164,8 @@ class UniversityCampusLocator:
         if 41.4 < lat < 41.5 and 33.7 < lon < 33.8:
             return 2000  # 2km radius yeterli
 
-        # Default Turkish universities
-        if country == "Turkey":
+        # Default Turkish universities (Turkey coordinates: 36-42°N, 26-45°E)
+        if 36 < lat < 42 and 26 < lon < 45:
             return 1500  # 1.5km genelde yeterli
 
         # International universities (genelde daha büyük)
@@ -185,7 +178,7 @@ class UniversityCampusLocator:
         Returns:
             List of university names
         """
-        return [uni['name'] for uni in self.KNOWN_UNIVERSITIES.values()]
+        return [uni["name"] for uni in self.KNOWN_UNIVERSITIES.values()]
 
 
 # Convenience function
