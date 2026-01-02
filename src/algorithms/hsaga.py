@@ -26,7 +26,33 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Module-level function for multiprocessing (must be picklable)
+# =============================================================================
+# PARALLEL EVALUATION WORKERS (Module-level for picklability)
+# =============================================================================
+
+
+def _evaluate_solution_worker(
+    solution: Solution,
+    buildings: List[Building],
+    bounds: Tuple[float, float, float, float],
+) -> Tuple[Solution, float]:
+    """
+    Worker function for parallel fitness evaluation.
+
+    Args:
+        solution: Solution to evaluate
+        buildings: List of buildings
+        bounds: Site boundaries
+
+    Returns:
+        Tuple of (solution, fitness)
+    """
+    evaluator = FitnessEvaluator(buildings, bounds)
+    fitness = evaluator.evaluate(solution)
+    solution.fitness = fitness
+    return solution, fitness
+
+
 def _run_sa_chain_worker(
     buildings: List[Building],
     bounds: Tuple[float, float, float, float],
@@ -548,6 +574,74 @@ class HybridSAGA(Optimizer):
         }
 
         return result
+
+    def _evaluate_population_parallel(
+        self,
+        solutions: List[Solution],
+        max_workers: Optional[int] = None,
+        parallel_threshold: int = 50,
+    ) -> List[Solution]:
+        """
+        Evaluate multiple solutions with smart parallelization.
+
+        Uses ThreadPoolExecutor for GA (shared memory) to avoid pickling overhead.
+        Only parallelizes when batch size justifies overhead.
+
+        Args:
+            solutions: List of solutions to evaluate
+            max_workers: Maximum parallel workers (None = auto)
+            parallel_threshold: Minimum batch size for parallel (default 50)
+
+        Returns:
+            Solutions with fitness values updated
+        """
+        # Filter solutions that need evaluation
+        to_evaluate = [s for s in solutions if s.fitness is None]
+
+        if not to_evaluate:
+            return solutions
+
+        # Sequential for small batches (overhead not worth it)
+        if len(to_evaluate) < parallel_threshold:
+            for solution in to_evaluate:
+                solution.fitness = self.evaluator.evaluate(solution)
+                self.stats["evaluations"] = self.stats.get("evaluations", 0) + 1
+            return solutions
+
+        # Parallel evaluation with ThreadPoolExecutor (no pickling!)
+        try:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            if max_workers is None:
+                max_workers = min(len(to_evaluate) // 10, 4)  # Conservative
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit evaluation tasks
+                future_to_solution = {
+                    executor.submit(self.evaluator.evaluate, sol): sol for sol in to_evaluate
+                }
+
+                # Collect results
+                for future in as_completed(future_to_solution):
+                    solution = future_to_solution[future]
+                    try:
+                        fitness = future.result()
+                        solution.fitness = fitness
+                        self.stats["evaluations"] = self.stats.get("evaluations", 0) + 1
+                    except Exception as e:
+                        # Fallback for this solution
+                        logger.warning(f"Thread evaluation failed: {e}")
+                        solution.fitness = self.evaluator.evaluate(solution)
+                        self.stats["evaluations"] = self.stats.get("evaluations", 0) + 1
+
+        except Exception as e:
+            # Complete fallback to sequential
+            logger.warning(f"Parallel evaluation failed: {e}. Using sequential.")
+            for solution in to_evaluate:
+                solution.fitness = self.evaluator.evaluate(solution)
+                self.stats["evaluations"] = self.stats.get("evaluations", 0) + 1
+
+        return solutions
 
     def _simulated_annealing(self) -> List[Solution]:
         """
@@ -1256,11 +1350,8 @@ class HybridSAGA(Optimizer):
         population = self._initialize_ga_population(sa_solutions)
         logger.info(f"  Initial population: {len(population)} individuals")
 
-        # Evaluate initial population
-        for solution in population:
-            if solution.fitness is None:
-                solution.fitness = self.evaluator.evaluate(solution)
-                self.stats["evaluations"] = self.stats.get("evaluations", 0) + 1
+        # Evaluate initial population (parallel)
+        population = self._evaluate_population_parallel(population)
 
         # Track convergence
         best_fitness_history = []
@@ -1279,11 +1370,8 @@ class HybridSAGA(Optimizer):
             # 3. Mutation
             offspring = self._mutation(offspring)
 
-            # 4. Evaluate offspring (only those with invalidated fitness)
-            for solution in offspring:
-                if solution.fitness is None:
-                    solution.fitness = self.evaluator.evaluate(solution)
-                    self.stats["evaluations"] = self.stats.get("evaluations", 0) + 1
+            # 4. Evaluate offspring (parallel)
+            offspring = self._evaluate_population_parallel(offspring)
 
             # 5. Replacement (elitism)
             population = self._replacement(population, offspring)
