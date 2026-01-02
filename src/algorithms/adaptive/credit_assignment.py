@@ -259,14 +259,44 @@ class CreditAssignment:
 
         # Calculate UCB scores
         ucb_scores = {}
+        unexplored = []
+
         for name, credit in self.credits.items():
             if credit.uses == 0:
-                ucb_scores[name] = float("inf")  # Unexplored operators get priority
+                unexplored.append(name)
             else:
                 exploration_bonus = c * np.sqrt(np.log(total_uses) / credit.uses)
                 ucb_scores[name] = credit.avg_improvement + exploration_bonus
 
-        # Convert to probabilities via softmax
+        # If there are unexplored operators, give them equal high probability
+        if unexplored:
+            n_unexplored = len(unexplored)
+            n_explored = len(ucb_scores)
+
+            # Give unexplored operators 50% of probability mass
+            if n_explored > 0:
+                unexplored_prob = 0.5 / n_unexplored
+                explored_prob = 0.5
+            else:
+                # All unexplored - uniform
+                unexplored_prob = 1.0 / n_unexplored
+                explored_prob = 0.0
+
+            result = {name: unexplored_prob for name in unexplored}
+
+            if n_explored > 0:
+                # Softmax for explored operators
+                scores = np.array(list(ucb_scores.values()))
+                scores = scores - scores.max()  # Numerical stability
+                exp_scores = np.exp(scores)
+                probs = exp_scores / exp_scores.sum()
+
+                for name, p in zip(ucb_scores.keys(), probs):
+                    result[name] = float(p) * explored_prob
+
+            return result
+
+        # All explored - use softmax on UCB scores
         scores = np.array(list(ucb_scores.values()))
         scores = scores - scores.max()  # Numerical stability
         exp_scores = np.exp(scores)
