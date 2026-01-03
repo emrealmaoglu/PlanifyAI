@@ -15,9 +15,9 @@ from typing import Any, Dict, Optional
 
 import pandas as pd
 
-from algorithms.building import Building
-from algorithms.solution import Solution
-from data.campus_data import CampusData
+from src.algorithms.building import Building
+from src.algorithms.solution import Solution
+from src.data.campus_data import CampusData
 
 
 class ResultExporter:
