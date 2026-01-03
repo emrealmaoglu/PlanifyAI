@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from benchmarks import BenchmarkConfig, BenchmarkReporter, BenchmarkRunner
 from benchmarks.test_cases import get_test_cases_by_category
-from src.algorithms.profiles import ProfileType
+from src.algorithms.objective_profiles import ProfileType
 
 
 def main():

@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from benchmarks import BenchmarkConfig, BenchmarkReporter, BenchmarkRunner, create_test_cases
 from benchmarks.test_cases import get_test_case_by_name, get_test_cases_by_category
-from src.algorithms.profiles import ProfileType
+from src.algorithms.objective_profiles import ProfileType
 
 
 def parse_args():

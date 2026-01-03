@@ -25,7 +25,7 @@ from backend.core.optimization.adaptive_hsaga_runner import (
     AdaptiveHSAGARunnerConfig,
 )
 from backend.core.optimization.nsga3_runner import NSGA3Runner, NSGA3RunnerConfig
-from src.algorithms.profiles import ProfileType
+from src.algorithms.objective_profiles import ProfileType
 
 from .test_cases import BenchmarkTestCase
 
