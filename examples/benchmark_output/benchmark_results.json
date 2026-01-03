@@ -1,0 +1,236 @@
+[
+  {
+    "algorithm": "NSGA-III",
+    "test_case_name": "small_residential",
+    "seed": 42,
+    "run_number": 1,
+    "runtime": 28.222426891326904,
+    "evaluations": 930,
+    "pareto_size": 1,
+    "hypervolume": 0.0,
+    "memory_peak_mb": 0.12999534606933594,
+    "best_objective_values": [
+      0.0815,
+      0.7811988500464242,
+      0.0,
+      0.9999999999999998
+    ],
+    "metadata": {
+      "population_size": 30,
+      "n_generations": 30,
+      "n_partitions": 12
+    }
+  },
+  {
+    "algorithm": "NSGA-III",
+    "test_case_name": "small_residential",
+    "seed": 123,
+    "run_number": 2,
+    "runtime": 27.367295026779175,
+    "evaluations": 930,
+    "pareto_size": 3,
+    "hypervolume": 0.0,
+    "memory_peak_mb": 0.0921792984008789,
+    "best_objective_values": [
+      0.0815,
+      0.5381480579402781,
+      0.0,
+      0.9999999999999998
+    ],
+    "metadata": {
+      "population_size": 30,
+      "n_generations": 30,
+      "n_partitions": 12
+    }
+  },
+  {
+    "algorithm": "NSGA-III",
+    "test_case_name": "small_residential",
+    "seed": 456,
+    "run_number": 3,
+    "runtime": 27.469589948654175,
+    "evaluations": 930,
+    "pareto_size": 12,
+    "hypervolume": 0.0,
+    "memory_peak_mb": 0.09476852416992188,
+    "best_objective_values": [
+      0.0815,
+      0.5469557185224309,
+      0.0,
+      0.9999999999999998
+    ],
+    "metadata": {
+      "population_size": 30,
+      "n_generations": 30,
+      "n_partitions": 12
+    }
+  },
+  {
+    "algorithm": "AdaptiveHSAGA",
+    "test_case_name": "small_residential",
+    "seed": 42,
+    "run_number": 1,
+    "runtime": 0.44216108322143555,
+    "evaluations": 576,
+    "pareto_size": 14,
+    "hypervolume": 8.756132914326604e-19,
+    "memory_peak_mb": 0.08630657196044922,
+    "best_objective_values": 0.784112189813389,
+    "metadata": {
+      "population_size": 30,
+      "n_iterations": 30,
+      "initial_temp": 1000.0
+    }
+  },
+  {
+    "algorithm": "AdaptiveHSAGA",
+    "test_case_name": "small_residential",
+    "seed": 123,
+    "run_number": 2,
+    "runtime": 0.4476327896118164,
+    "evaluations": 576,
+    "pareto_size": 14,
+    "hypervolume": 8.756132914326604e-19,
+    "memory_peak_mb": 0.07569599151611328,
+    "best_objective_values": 0.784112189813389,
+    "metadata": {
+      "population_size": 30,
+      "n_iterations": 30,
+      "initial_temp": 1000.0
+    }
+  },
+  {
+    "algorithm": "AdaptiveHSAGA",
+    "test_case_name": "small_residential",
+    "seed": 456,
+    "run_number": 3,
+    "runtime": 0.4571971893310547,
+    "evaluations": 576,
+    "pareto_size": 14,
+    "hypervolume": 8.756132914326604e-19,
+    "memory_peak_mb": 0.07421016693115234,
+    "best_objective_values": 0.784112189813389,
+    "metadata": {
+      "population_size": 30,
+      "n_iterations": 30,
+      "initial_temp": 1000.0
+    }
+  },
+  {
+    "algorithm": "NSGA-III",
+    "test_case_name": "small_educational",
+    "seed": 42,
+    "run_number": 1,
+    "runtime": 27.559420108795166,
+    "evaluations": 930,
+    "pareto_size": 30,
+    "hypervolume": 7.941529567365511e-07,
+    "memory_peak_mb": 0.08933162689208984,
+    "best_objective_values": [
+      0.124,
+      0.3766934677966151,
+      1.8258244995766935,
+      0.946394630357186
+    ],
+    "metadata": {
+      "population_size": 30,
+      "n_generations": 30,
+      "n_partitions": 12
+    }
+  },
+  {
+    "algorithm": "NSGA-III",
+    "test_case_name": "small_educational",
+    "seed": 123,
+    "run_number": 2,
+    "runtime": 28.403201818466187,
+    "evaluations": 930,
+    "pareto_size": 30,
+    "hypervolume": 4.059377360982406e-07,
+    "memory_peak_mb": 0.08917808532714844,
+    "best_objective_values": [
+      0.124,
+      0.5853811352364335,
+      1.9697245388188354,
+      0.946394630357186
+    ],
+    "metadata": {
+      "population_size": 30,
+      "n_generations": 30,
+      "n_partitions": 12
+    }
+  },
+  {
+    "algorithm": "NSGA-III",
+    "test_case_name": "small_educational",
+    "seed": 456,
+    "run_number": 3,
+    "runtime": 28.19432497024536,
+    "evaluations": 930,
+    "pareto_size": 26,
+    "hypervolume": 4.82481313256604e-07,
+    "memory_peak_mb": 0.0889596939086914,
+    "best_objective_values": [
+      0.124,
+      0.3924939312775457,
+      1.951939022755732,
+      0.946394630357186
+    ],
+    "metadata": {
+      "population_size": 30,
+      "n_generations": 30,
+      "n_partitions": 12
+    }
+  },
+  {
+    "algorithm": "AdaptiveHSAGA",
+    "test_case_name": "small_educational",
+    "seed": 42,
+    "run_number": 1,
+    "runtime": 0.5492660999298096,
+    "evaluations": 557,
+    "pareto_size": 14,
+    "hypervolume": 5.376942668834242e-18,
+    "memory_peak_mb": 0.07035636901855469,
+    "best_objective_values": 0.8410262586581062,
+    "metadata": {
+      "population_size": 30,
+      "n_iterations": 30,
+      "initial_temp": 1000.0
+    }
+  },
+  {
+    "algorithm": "AdaptiveHSAGA",
+    "test_case_name": "small_educational",
+    "seed": 123,
+    "run_number": 2,
+    "runtime": 0.5433180332183838,
+    "evaluations": 557,
+    "pareto_size": 14,
+    "hypervolume": 5.376942668834242e-18,
+    "memory_peak_mb": 0.07147884368896484,
+    "best_objective_values": 0.8410262586581062,
+    "metadata": {
+      "population_size": 30,
+      "n_iterations": 30,
+      "initial_temp": 1000.0
+    }
+  },
+  {
+    "algorithm": "AdaptiveHSAGA",
+    "test_case_name": "small_educational",
+    "seed": 456,
+    "run_number": 3,
+    "runtime": 0.5432050228118896,
+    "evaluations": 557,
+    "pareto_size": 14,
+    "hypervolume": 5.376942668834242e-18,
+    "memory_peak_mb": 0.0712890625,
+    "best_objective_values": 0.8410262586581062,
+    "metadata": {
+      "population_size": 30,
+      "n_iterations": 30,
+      "initial_temp": 1000.0
+    }
+  }
+]
