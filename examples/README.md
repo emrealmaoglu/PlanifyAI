@@ -55,6 +55,31 @@ python examples/api_usage_examples.py
 - Visualization plots in `examples/api_output/`
 - Statistics and best solution printed to console
 
+### 3. Performance Benchmark (`benchmark_example.py`)
+
+Demonstrates the benchmarking system for comparing NSGA-III and AdaptiveHSAGA:
+- Running standardized test cases
+- Measuring performance metrics (runtime, memory, quality)
+- Generating comparative reports and visualizations
+- Statistical analysis
+
+**Usage:**
+```bash
+python examples/benchmark_example.py
+```
+
+**Output:**
+- Benchmark reports in `examples/benchmark_output/`:
+  - `benchmark_summary.txt` - Statistical summary
+  - `runtime_comparison.png` - Runtime chart
+  - `hypervolume_comparison.png` - Quality chart
+  - `pareto_size_comparison.png` - Front size chart
+  - `memory_comparison.png` - Memory usage chart
+  - `benchmark_results.json` - Raw data
+  - `benchmark_statistics.json` - Statistics
+
+**See Also:** [Benchmarks README](../benchmarks/README.md) for comprehensive benchmarking documentation
+
 ## 🎯 Objective Profiles
 
 The system includes 4 predefined objective profiles:
@@ -203,7 +228,8 @@ When the API server is running, visit:
 1. **Beginner**: Start with `nsga3_complete_workflow.py` to understand the basics
 2. **Intermediate**: Experiment with different profiles and configurations
 3. **Advanced**: Use `api_usage_examples.py` for web integration
-4. **Expert**: Create custom profiles and objectives
+4. **Performance**: Run `benchmark_example.py` to compare algorithms
+5. **Expert**: Create custom profiles and objectives, run comprehensive benchmarks
 
 ## 🤝 Support
 
