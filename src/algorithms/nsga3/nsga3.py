@@ -81,6 +81,7 @@ class NSGA3(Optimizer):
         use_two_layer: bool = False,
         n_partitions_inner: int = 6,
         registry: Optional[OperatorRegistry] = None,
+        evaluator: Optional[FitnessEvaluator] = None,
     ):
         """
         Initialize NSGA-III optimizer.
@@ -98,6 +99,7 @@ class NSGA3(Optimizer):
             use_two_layer: Use two-layer reference points for many objectives
             n_partitions_inner: Inner layer partitions (if use_two_layer=True)
             registry: Operator registry (uses default if None)
+            evaluator: Custom fitness evaluator (optional, uses default if None)
         """
         self.buildings = buildings
         self.bounds = bounds
@@ -110,8 +112,8 @@ class NSGA3(Optimizer):
         self.use_two_layer = use_two_layer
         self.n_partitions_inner = n_partitions_inner
 
-        # Initialize evaluator
-        self.evaluator = FitnessEvaluator(buildings=buildings, bounds=bounds)
+        # Initialize evaluator (use custom if provided)
+        self.evaluator = evaluator or FitnessEvaluator(buildings=buildings, bounds=bounds)
 
         # Get number of objectives from evaluator
         self.n_objectives = len(self.evaluator.get_objective_names())

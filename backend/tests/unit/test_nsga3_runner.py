@@ -255,5 +255,108 @@ class TestConvenienceFunction:
         assert len(result["pareto_front"]) > 0
 
 
+class TestNSGA3RunnerWithObjectiveProfiles:
+    """Test NSGA-III runner with objective profiles."""
+
+    def test_with_standard_profile(self):
+        """Test with standard profile."""
+        np.random.seed(42)
+
+        from src.algorithms import ProfileType
+
+        buildings = [
+            Building("B1", BuildingType.RESIDENTIAL, 2000, 4),
+            Building("B2", BuildingType.EDUCATIONAL, 1500, 3),
+        ]
+        bounds = (0, 0, 500, 500)
+
+        config = NSGA3RunnerConfig(
+            population_size=10,
+            n_generations=5,
+            objective_profile=ProfileType.STANDARD,
+            verbose=False,
+        )
+
+        runner = NSGA3Runner(buildings, bounds, config)
+        result = runner.run()
+
+        # Should have 3 objectives (cost, walking, adjacency)
+        assert result["pareto_objectives"].shape[1] == 3
+
+    def test_with_research_enhanced_profile(self):
+        """Test with research-enhanced profile."""
+        np.random.seed(42)
+
+        from src.algorithms import ProfileType
+
+        buildings = [
+            Building("B1", BuildingType.RESIDENTIAL, 2000, 4),
+            Building("B2", BuildingType.EDUCATIONAL, 1500, 3),
+            Building("B3", BuildingType.COMMERCIAL, 1000, 2),
+        ]
+        bounds = (0, 0, 500, 500)
+
+        config = NSGA3RunnerConfig(
+            population_size=10,
+            n_generations=5,
+            objective_profile=ProfileType.RESEARCH_ENHANCED,
+            verbose=False,
+        )
+
+        runner = NSGA3Runner(buildings, bounds, config)
+        result = runner.run()
+
+        # Should have 4 objectives (cost, walking, adjacency, diversity)
+        assert result["pareto_objectives"].shape[1] == 4
+
+    def test_with_profile_string(self):
+        """Test with profile as string."""
+        np.random.seed(42)
+
+        buildings = [Building("B1", BuildingType.RESIDENTIAL, 2000, 4)]
+        bounds = (0, 0, 500, 500)
+
+        config = NSGA3RunnerConfig(
+            population_size=10,
+            n_generations=5,
+            objective_profile="15_minute_city",
+            verbose=False,
+        )
+
+        runner = NSGA3Runner(buildings, bounds, config)
+
+        # Should resolve to 15-Minute City profile
+        assert runner.objective_profile.name == "15-Minute City"
+        assert runner.objective_profile.walking_speed_kmh == 3.0  # Elderly speed
+
+    def test_with_custom_profile(self):
+        """Test with custom profile object."""
+        np.random.seed(42)
+
+        from src.algorithms import create_custom_profile
+
+        custom_profile = create_custom_profile(
+            name="Test Custom",
+            use_enhanced=True,
+            weights={"cost": 0.2, "walking": 0.3, "adjacency": 0.3, "diversity": 0.2},
+            walking_speed_kmh=4.0,
+        )
+
+        buildings = [Building("B1", BuildingType.RESIDENTIAL, 2000, 4)]
+        bounds = (0, 0, 500, 500)
+
+        config = NSGA3RunnerConfig(
+            population_size=10,
+            n_generations=5,
+            objective_profile=custom_profile,
+            verbose=False,
+        )
+
+        runner = NSGA3Runner(buildings, bounds, config)
+
+        assert runner.objective_profile.name == "Test Custom"
+        assert runner.objective_profile.walking_speed_kmh == 4.0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

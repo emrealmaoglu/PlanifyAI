@@ -11,11 +11,11 @@ Created: 2026-01-03
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
-from src.algorithms import Building
+from src.algorithms import Building, ObjectiveProfile, ProfileType, get_profile
 from src.algorithms.nsga3 import NSGA3
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,9 @@ class NSGA3RunnerConfig:
     # Genetic operators
     crossover_rate: float = 0.9
     mutation_rate: float = 0.15
+
+    # Objective configuration
+    objective_profile: Optional[Union[ObjectiveProfile, ProfileType, str]] = None
 
     # Performance
     seed: Optional[int] = 42
@@ -92,6 +95,20 @@ class NSGA3Runner:
         if self.config.seed is not None:
             np.random.seed(self.config.seed)
 
+        # Resolve objective profile
+        self.objective_profile = self._resolve_objective_profile(self.config.objective_profile)
+
+        # Create fitness evaluator with profile settings
+        from src.algorithms.fitness import FitnessEvaluator
+
+        evaluator = FitnessEvaluator(
+            buildings=buildings,
+            bounds=bounds,
+            weights=self.objective_profile.weights,
+            use_enhanced=self.objective_profile.use_enhanced,
+            walking_speed_kmh=self.objective_profile.walking_speed_kmh,
+        )
+
         # Initialize optimizer
         self.optimizer = NSGA3(
             buildings=buildings,
@@ -104,6 +121,7 @@ class NSGA3Runner:
             reference_points=self.config.reference_points,
             crossover_rate=self.config.crossover_rate,
             mutation_rate=self.config.mutation_rate,
+            evaluator=evaluator,
         )
 
         # Stats
@@ -113,6 +131,43 @@ class NSGA3Runner:
             "runtime": 0,
             "pareto_size": 0,
         }
+
+    def _resolve_objective_profile(
+        self, profile: Optional[Union[ObjectiveProfile, ProfileType, str]]
+    ) -> ObjectiveProfile:
+        """
+        Resolve objective profile from various input types.
+
+        Args:
+            profile: ObjectiveProfile, ProfileType enum, or profile name string
+
+        Returns:
+            Resolved ObjectiveProfile
+
+        Raises:
+            ValueError: If profile type is invalid
+        """
+        if profile is None:
+            # Default to standard profile
+            return get_profile(ProfileType.STANDARD)
+        elif isinstance(profile, ObjectiveProfile):
+            # Already an ObjectiveProfile
+            return profile
+        elif isinstance(profile, ProfileType):
+            # ProfileType enum
+            return get_profile(profile)
+        elif isinstance(profile, str):
+            # String profile name - try to match
+            try:
+                profile_type = ProfileType(profile.lower())
+                return get_profile(profile_type)
+            except ValueError:
+                raise ValueError(
+                    f"Invalid profile name: {profile}. "
+                    f"Valid options: {[p.value for p in ProfileType if p != ProfileType.CUSTOM]}"
+                )
+        else:
+            raise ValueError(f"Invalid profile type: {type(profile)}")
 
     def run(self) -> Dict[str, Any]:
         """
