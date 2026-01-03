@@ -18,7 +18,7 @@ from .adjacency_qap import (
     get_adjacency_weight,
     maximize_adjacency_satisfaction,
 )
-from .connectivity import maximize_connectivity
+from .connectivity import maximize_network_connectivity
 
 __all__ = [
     # Accessibility
@@ -29,5 +29,5 @@ __all__ = [
     "get_adjacency_weight",
     "get_adjacency_report",
     # Connectivity
-    "maximize_connectivity",
+    "maximize_network_connectivity",
 ]

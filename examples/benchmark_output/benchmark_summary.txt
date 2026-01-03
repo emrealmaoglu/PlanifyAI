@@ -1,0 +1,48 @@
+================================================================================
+BENCHMARK SUMMARY REPORT
+================================================================================
+
+
+Test Case: small_educational
+--------------------------------------------------------------------------------
+
+[NSGA-III]
+  Runtime:         28.05s ±   0.36s (min= 27.56s, max= 28.40s)
+  Evaluations:       930 ±      0 (min=   930, max=   930)
+  Pareto Size:      28.7 ±    1.9 (min=    26, max=    30)
+  Hypervolume:      0.00 ±   0.00 (min=  0.00, max=  0.00)
+  Memory Peak:      0.09MB ±   0.00MB (min=  0.09MB, max=  0.09MB)
+
+[AdaptiveHSAGA]
+  Runtime:          0.55s ±   0.00s (min=  0.54s, max=  0.55s)
+  Evaluations:       557 ±      0 (min=   557, max=   557)
+  Pareto Size:      14.0 ±    0.0 (min=    14, max=    14)
+  Hypervolume:      0.00 ±   0.00 (min=  0.00, max=  0.00)
+  Memory Peak:      0.07MB ±   0.00MB (min=  0.07MB, max=  0.07MB)
+
+[Comparison]
+  AdaptiveHSAGA is 51.45x faster than NSGA-III
+  NSGA-III achieves 104307851116.70x better hypervolume than AdaptiveHSAGA
+
+Test Case: small_residential
+--------------------------------------------------------------------------------
+
+[NSGA-III]
+  Runtime:         27.69s ±   0.38s (min= 27.37s, max= 28.22s)
+  Evaluations:       930 ±      0 (min=   930, max=   930)
+  Pareto Size:       5.3 ±    4.8 (min=     1, max=    12)
+  Hypervolume:      0.00 ±   0.00 (min=  0.00, max=  0.00)
+  Memory Peak:      0.11MB ±   0.02MB (min=  0.09MB, max=  0.13MB)
+
+[AdaptiveHSAGA]
+  Runtime:          0.45s ±   0.01s (min=  0.44s, max=  0.46s)
+  Evaluations:       576 ±      0 (min=   576, max=   576)
+  Pareto Size:      14.0 ±    0.0 (min=    14, max=    14)
+  Hypervolume:      0.00 ±   0.00 (min=  0.00, max=  0.00)
+  Memory Peak:      0.08MB ±   0.01MB (min=  0.07MB, max=  0.09MB)
+
+[Comparison]
+  AdaptiveHSAGA is 61.66x faster than NSGA-III
+  AdaptiveHSAGA achieves infx better hypervolume than NSGA-III
+
+================================================================================

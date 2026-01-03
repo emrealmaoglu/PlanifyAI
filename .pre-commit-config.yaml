@@ -37,7 +37,7 @@ repos:
     rev: 7.0.0
     hooks:
       - id: flake8
+        exclude: ^examples/
         args:
           - '--max-line-length=100'
           - '--extend-ignore=E203,W503,E402,D,I'  # Ignore E402 for benchmark/script files that need sys.path
-          - '--exclude=.git,venv,.pytest_cache,htmlcov,build,dist'

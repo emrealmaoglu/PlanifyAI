@@ -39,11 +39,12 @@ class Solution:
         Args:
             positions: Building ID -> (x, y) coordinate mapping
             fitness: Optional fitness score
-            objectives: Optional objective scores dict
+            objectives: Optional objective scores dict or numpy array
         """
         self.positions = positions
         self.fitness = fitness
-        self.objectives = objectives or {}
+        # Handle None case - objectives can be dict or numpy array
+        self.objectives = {} if objectives is None else objectives
         self.metadata = {}
 
     def copy(self) -> "Solution":
@@ -53,10 +54,19 @@ class Solution:
         Returns:
             New Solution instance with copied data
         """
+        # Handle objectives - can be dict or numpy array
+        objectives_copy = None
+        if self.objectives is not None:
+            if isinstance(self.objectives, dict):
+                objectives_copy = self.objectives.copy()
+            else:
+                # numpy array or other array-like
+                objectives_copy = self.objectives.copy()
+
         new_sol = Solution(
             positions=self.positions.copy(),
             fitness=self.fitness,
-            objectives=self.objectives.copy() if self.objectives else None,
+            objectives=objectives_copy,
         )
         new_sol.metadata = self.metadata.copy()
         return new_sol
