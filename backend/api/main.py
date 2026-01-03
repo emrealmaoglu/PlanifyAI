@@ -65,6 +65,15 @@ try:
 except ImportError as e:
     print(f"❌ NSGA-III router failed: {e}")
 
+# New: Visualization router (for result visualization)
+try:
+    from backend.api.routers import visualization
+
+    app.include_router(visualization.router)
+    print("✅ Visualization router loaded")
+except ImportError as e:
+    print(f"❌ Visualization router failed: {e}")
+
 
 # --- 3. HEALTH CHECK (Load balancer / monitoring) ---
 @app.get("/health")
