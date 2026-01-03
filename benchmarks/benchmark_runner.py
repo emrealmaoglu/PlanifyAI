@@ -321,6 +321,13 @@ class BenchmarkRunner:
         if len(objectives) == 0:
             return 0.0
 
+        # Ensure objectives is 2D
+        if objectives.ndim == 1:
+            objectives = objectives.reshape(1, -1)
+
+        if objectives.shape[0] == 0:
+            return 0.0
+
         # For 2D objectives, compute exact hypervolume
         if objectives.shape[1] == 2:
             # Sort by first objective
