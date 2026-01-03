@@ -22,6 +22,11 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 import numpy as np
 
 from .adaptive import AdaptiveOperatorSelector, AdaptiveParameterTuner, SelectionStrategy
+from .adaptive_cooling import (
+    adaptive_cooling_specific_heat,
+    adaptive_markov_length,
+    hybrid_constant_exponential,
+)
 from .base import Optimizer
 from .building import Building
 from .fitness import FitnessEvaluator
@@ -118,6 +123,11 @@ class AdaptiveHSAGA(Optimizer):
             "max_iterations": 500,
             "num_chains": 4,
             "chain_iterations": 500,
+            # Options: "exponential", "adaptive_specific_heat", "hybrid"
+            "cooling_schedule": "adaptive_specific_heat",
+            "adaptive_alpha": 0.95,  # Base cooling rate for adaptive
+            "markov_base_length": 10,  # Base Markov chain length for adaptive
+            "use_adaptive_markov": True,  # Enable adaptive Markov chain length
         }
 
         # GA configuration
@@ -214,6 +224,8 @@ class AdaptiveHSAGA(Optimizer):
         print("⚙️  Configuration:")
         print(f"   SA Chains: {self.sa_config['num_chains']}")
         print(f"   SA Iterations/Chain: {self.sa_config['chain_iterations']}")
+        print(f"   SA Cooling: {self.sa_config.get('cooling_schedule', 'exponential')}")
+        print(f"   SA Adaptive Markov: {self.sa_config.get('use_adaptive_markov', False)}")
         print(f"   GA Population: {self.ga_config['population_size']}")
         print(f"   GA Generations: {self.ga_config['generations']}")
         print(f"   Adaptive: {self.enable_adaptive}")
@@ -375,7 +387,7 @@ class AdaptiveHSAGA(Optimizer):
         return solutions
 
     def _run_sa_chain_adaptive(self, seed: int) -> Solution:
-        """Run single SA chain with adaptive operator selection."""
+        """Run single SA chain with adaptive operator selection and cooling."""
         # Generate initial solution
         current = self._generate_random_solution()
         current.fitness = self.evaluator.evaluate(current)
@@ -383,54 +395,106 @@ class AdaptiveHSAGA(Optimizer):
 
         temperature = self.sa_config["initial_temp"]
         final_temp = self.sa_config["final_temp"]
-        cooling_rate = self.sa_config["cooling_rate"]
+        cooling_schedule = self.sa_config.get("cooling_schedule", "exponential")
         max_iter = self.sa_config["chain_iterations"]
 
+        # Adaptive cooling parameters
+        adaptive_alpha = self.sa_config.get("adaptive_alpha", 0.95)
+        markov_base_length = self.sa_config.get("markov_base_length", 10)
+        use_adaptive_markov = self.sa_config.get("use_adaptive_markov", True)
+
+        # Tracking for adaptive cooling
+        costs_at_temp = []
         chain_history = []
 
+        # Hybrid schedule parameters
+        burn_in_iterations = max_iter // 4 if cooling_schedule == "hybrid" else 0
+
         # SA loop
-        for iteration in range(max_iter):
-            # Select perturbation operator adaptively
-            if self.enable_adaptive:
-                op_name, perturbation_op = self.operator_selector.select_perturbation()
-            else:
-                # Fallback to gaussian
-                op_name, perturbation_op = (
-                    "gaussian",
-                    self.registry.get_perturbation("gaussian", scale_factor=10.0),
+        iteration = 0
+        while iteration < max_iter and temperature >= final_temp:
+            # Determine Markov chain length for this temperature
+            if use_adaptive_markov and len(costs_at_temp) > 1:
+                markov_length = adaptive_markov_length(
+                    base_length=markov_base_length,
+                    costs_at_temp=costs_at_temp,
+                    min_length=5,
+                    max_length=50,
                 )
+            else:
+                markov_length = markov_base_length
 
-            # Generate neighbor
-            neighbor = perturbation_op.perturb(current, self.buildings, self.bounds, temperature)
-            neighbor.fitness = self.evaluator.evaluate(neighbor)
-
-            # Calculate delta
-            delta = neighbor.fitness - current.fitness
-
-            # Metropolis criterion
-            accepted = delta > 0 or np.random.random() < np.exp(delta / temperature)
-
-            if accepted:
-                # Update credit for successful perturbation
+            # Markov chain at current temperature
+            temp_costs = []
+            for _ in range(markov_length):
+                # Select perturbation operator adaptively
                 if self.enable_adaptive:
-                    improvement = delta
-                    success = delta > 0
-                    self.operator_selector.update_perturbation_credit(op_name, improvement, success)
+                    op_name, perturbation_op = self.operator_selector.select_perturbation()
+                else:
+                    # Fallback to gaussian
+                    op_name, perturbation_op = (
+                        "gaussian",
+                        self.registry.get_perturbation("gaussian", scale_factor=10.0),
+                    )
 
-                current = neighbor
-                if current.fitness > best.fitness:
-                    best = current.copy()
+                # Generate neighbor
+                neighbor = perturbation_op.perturb(
+                    current, self.buildings, self.bounds, temperature
+                )
+                neighbor.fitness = self.evaluator.evaluate(neighbor)
 
-            # Cool down
-            temperature *= cooling_rate
+                # Calculate delta
+                delta = neighbor.fitness - current.fitness
+
+                # Metropolis criterion
+                accepted = delta > 0 or np.random.random() < np.exp(delta / temperature)
+
+                if accepted:
+                    # Update credit for successful perturbation
+                    if self.enable_adaptive:
+                        improvement = delta
+                        success = delta > 0
+                        self.operator_selector.update_perturbation_credit(
+                            op_name, improvement, success
+                        )
+
+                    current = neighbor
+                    if current.fitness > best.fitness:
+                        best = current.copy()
+
+                # Track costs at this temperature
+                temp_costs.append(current.fitness)
+
+                iteration += 1
+                if iteration >= max_iter:
+                    break
+
+            # Store costs for adaptive cooling
+            costs_at_temp = temp_costs
+
+            # Apply cooling schedule
+            if cooling_schedule == "adaptive_specific_heat":
+                # Variance-based adaptive cooling
+                temperature = adaptive_cooling_specific_heat(
+                    T_current=temperature,
+                    costs_at_T=costs_at_temp,
+                    alpha_nought=adaptive_alpha,
+                )
+            elif cooling_schedule == "hybrid":
+                # Hybrid constant-exponential schedule
+                temperature = hybrid_constant_exponential(
+                    iteration=iteration,
+                    burn_in_iterations=burn_in_iterations,
+                    T_high=self.sa_config["initial_temp"],
+                    alpha_fast=0.9,
+                )
+            else:
+                # Default exponential cooling
+                temperature *= self.sa_config["cooling_rate"]
 
             # Track convergence
             if iteration % 50 == 0:
                 chain_history.append(best.fitness)
-
-            # Early stopping
-            if temperature < final_temp:
-                break
 
         return best
 
