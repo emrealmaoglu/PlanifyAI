@@ -303,11 +303,13 @@ class NSGA3(Optimizer):
         objective_names = self.evaluator.get_objective_names()
         objective_values = np.array([objectives_dict[name] for name in objective_names])
 
-        # Store multi-objective values
-        solution.objectives = objective_values
-
         # Store weighted sum as fitness (for backward compatibility)
+        # NOTE: evaluate() will overwrite solution.objectives with a dict,
+        # so we must restore the array afterward
         solution.fitness = self.evaluator.evaluate(solution)
+
+        # Store multi-objective values as numpy array (must be after evaluate call)
+        solution.objectives = objective_values
 
         self.stats["evaluations"] += 1
 

@@ -180,7 +180,8 @@ def niche_preserving_selection(
     n_ref_points = len(reference_points)
 
     # Count solutions associated with each reference point
-    niche_counts = np.zeros(n_ref_points, dtype=int)
+    # Use float dtype to allow np.inf
+    niche_counts = np.zeros(n_ref_points, dtype=float)
     for idx in front:
         niche_counts[associations[idx]] += 1
 
